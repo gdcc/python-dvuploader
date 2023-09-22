@@ -5,31 +5,6 @@ from typing import Callable
 from pydantic import BaseModel, Field
 
 
-class FeedbackCounter:
-    """Object to provide a feedback callback keeping track of total calls.
-
-    Attributes:
-        counter (int): The total number of calls.
-    """
-
-    def __init__(self):
-        self.counter = 0
-
-    def feedback(self, r, **kwargs):
-        """Provides a feedback callback keeping track of total calls.
-
-        Args:
-            r (request): The request object.
-            **kwargs: Additional keyword arguments.
-
-        Returns:
-            request: The request object.
-        """
-        self.counter += 1
-        print("{0} uploaded, {1} total.".format(r.url, self.counter))
-        return r
-
-
 class ChecksumTypes(Enum):
     """Enum class representing different types of checksums."""
 
