@@ -47,7 +47,7 @@ def direct_upload(
     assert os.path.exists(file.filepath), f"File {file.filepath} does not exist"
 
     file_size = os.path.getsize(file.filepath)
-    pbar = _setup_pbar(file.fileName, position)
+    pbar = _setup_pbar(file.filepath, position)
     response = _request_ticket(
         dataverse_url=dataverse_url,
         api_token=api_token,
