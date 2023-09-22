@@ -6,9 +6,9 @@ Python equivalent to the [DVUploader](https://github.com/GlobalDataverseCommunit
 
 **Features**
 
-* Parallel direct upload to a cloud storage provider
+* Parallel direct upload to a Dataverse backend storage
 * Files are streamed directly instead of being buffered in memory
-* Supports multipart uploads
+* Supports multipart uploads and chunks data accordingly
 
 -----
 
