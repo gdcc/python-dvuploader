@@ -20,9 +20,7 @@ Python equivalent to the [DVUploader](https://github.com/GlobalDataverseCommunit
 
 ## Getting started
 
-To get started with Catalax, you can install it via pip:
-
-**From source**
+To get started with DVUploader, you can install it via pip:
 
 ```bash
 python3 -m pip install git+https://github.com/JR-1991/python-dvuploader.git
