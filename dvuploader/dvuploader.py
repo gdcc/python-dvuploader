@@ -9,6 +9,18 @@ from dvuploader.file import File
 
 
 class DVUploder(BaseModel):
+    """
+    A class for uploading files to a Dataverse repository.
+
+    Attributes:
+        files (List[File]): A list of File objects to be uploaded.
+
+    Methods:
+        upload(persistent_id: str, dataverse_url: str, api_token: str) -> None:
+            Uploads the files to the specified Dataverse repository in parallel.
+
+    """
+
     files: List[File]
 
     def upload(
@@ -16,7 +28,18 @@ class DVUploder(BaseModel):
         persistent_id: str,
         dataverse_url: str,
         api_token: str,
-    ):
+    ) -> None:
+        """
+        Uploads the files to the specified Dataverse repository in parallel.
+
+        Args:
+            persistent_id (str): The persistent identifier of the Dataverse dataset.
+            dataverse_url (str): The URL of the Dataverse repository.
+            api_token (str): The API token for the Dataverse repository.
+
+        Returns:
+            None
+        """
         # Sort files by size
         files = sorted(
             self.files, key=lambda x: os.path.getsize(x.filepath), reverse=True

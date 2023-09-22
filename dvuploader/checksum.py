@@ -1,24 +1,38 @@
 import hashlib
-import os
 from enum import Enum
-from typing import Callable, List, Optional
+from typing import Callable
 
-from pydantic import BaseModel, Field, PrivateAttr, validator
+from pydantic import BaseModel, Field
 
 
 class FeedbackCounter:
-    """Object to provide a feedback callback keeping track of total calls."""
+    """Object to provide a feedback callback keeping track of total calls.
+
+    Attributes:
+        counter (int): The total number of calls.
+    """
 
     def __init__(self):
         self.counter = 0
 
     def feedback(self, r, **kwargs):
+        """Provides a feedback callback keeping track of total calls.
+
+        Args:
+            r (request): The request object.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            request: The request object.
+        """
         self.counter += 1
         print("{0} uploaded, {1} total.".format(r.url, self.counter))
         return r
 
 
 class ChecksumTypes(Enum):
+    """Enum class representing different types of checksums."""
+
     SHA1 = ("SHA-1", hashlib.sha1)
     MD5 = ("MD5", hashlib.md5)
     SHA256 = ("SHA-256", hashlib.sha256)
@@ -26,6 +40,13 @@ class ChecksumTypes(Enum):
 
 
 class Checksum(BaseModel):
+    """Checksum class represents a checksum object with type and value fields.
+
+    Attributes:
+        type (str): The type of the checksum.
+        value (str): The value of the checksum.
+    """
+
     class Config:
         allow_population_by_field_name = True
 
@@ -38,15 +59,33 @@ class Checksum(BaseModel):
         fpath: str,
         hash_fun: Callable,
         hash_algo: str,
-    ):
-        """Takes a file path and returns a checksum object"""
+    ) -> "Checksum":
+        """Takes a file path and returns a checksum object.
+
+        Args:
+            fpath (str): The file path to generate the checksum for.
+            hash_fun (Callable): The hash function to use for generating the checksum.
+            hash_algo (str): The hash algorithm to use for generating the checksum.
+
+        Returns:
+            Checksum: A Checksum object with type and value fields.
+        """
 
         value = cls._chunk_checksum(fpath=fpath, hash_fun=hash_fun)
         return cls(type=hash_algo, value=value)  # type: ignore
 
     @staticmethod
-    def _chunk_checksum(fpath: str, hash_fun: Callable, blocksize=2**20):
-        """Chunks a file and returns a checksum"""
+    def _chunk_checksum(fpath: str, hash_fun: Callable, blocksize=2**20) -> str:
+        """Chunks a file and returns a checksum.
+
+        Args:
+            fpath (str): The file path to generate the checksum for.
+            hash_fun (Callable): The hash function to use for generating the checksum.
+            blocksize (int): The block size to use for reading the file.
+
+        Returns:
+            str: A string representing the checksum of the file.
+        """
 
         m = hash_fun()
         with open(fpath, "rb") as f:

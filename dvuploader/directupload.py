@@ -32,11 +32,14 @@ def direct_upload(
     Uploads a file to a Dataverse collection using direct upload.
 
     Args:
-        filepath (str): The path to the file to upload.
+        file (File): The file object to upload.
         persistent_id (str): The persistent identifier of the Dataverse dataset to upload to.
         dataverse_url (str): The URL of the Dataverse instance to upload to.
         api_token (str): The API token to use for authentication.
-        checksum_type (ChecksumTypes, optional): The type of checksum to use for the uploaded file. Defaults to ChecksumTypes.MD5.
+        position (int): The position of the file in the list of files to upload.
+
+    Returns:
+        bool: True if the upload was successful, False otherwise.
     """
 
     assert file.fileName is not None, "File name is None"
