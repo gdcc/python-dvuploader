@@ -2,7 +2,7 @@ import grequests
 import requests
 import json
 import os
-from typing import List
+from typing import Dict, List
 from urllib.parse import urljoin
 
 from pydantic import BaseModel
@@ -33,6 +33,7 @@ class DVUploader(BaseModel):
         persistent_id: str,
         dataverse_url: str,
         api_token: str,
+        n_jobs: int = -1,
     ) -> None:
         """
         Uploads the files to the specified Dataverse repository in parallel.
@@ -41,7 +42,8 @@ class DVUploader(BaseModel):
             persistent_id (str): The persistent identifier of the Dataverse dataset.
             dataverse_url (str): The URL of the Dataverse repository.
             api_token (str): The API token for the Dataverse repository.
-
+            n_jobs (int): The number of parallel jobs to run. Defaults to -1.
+            
         Returns:
             None
         """
@@ -59,13 +61,13 @@ class DVUploader(BaseModel):
         )
 
         if not self.files:
-            print("❌ No files to upload")
+            print("\n❌ No files to upload")
             return
 
         # Upload files in parallel
         print(f"\n🚀 Uploading files")
 
-        Parallel(n_jobs=-1, backend="threading")(
+        Parallel(n_jobs=n_jobs, backend="threading")(
             delayed(direct_upload)(
                 file=file,
                 dataverse_url=dataverse_url,
@@ -101,23 +103,40 @@ class DVUploader(BaseModel):
             api_token=api_token,
         )
 
-        print("🔎 Checking dataset files")
-
-        for file in ds_files:
-            hash_algo, hash_value = tuple(file.dataFile.checksum.values())
-            fname = file.dataFile.filename
-
-            same_hash = lambda file: (
-                file.checksum.value == hash_value and file.checksum.type == hash_algo
-            )
-
-            if any(map(same_hash, self.files)):
-                del self.files[self.files.index(next(filter(same_hash, self.files)))]
+        print("\n🔎 Checking dataset files")
+        
+        to_remove = []
+        
+        for file in self.files:
+            if any(map(lambda dsFile: self._check_hashes(file, dsFile), ds_files)):
                 print(
-                    f"├── File '{fname}' already exists with same {hash_algo} hash - Skipping upload."
+                    f"├── File '{file.fileName}' already exists with same {file.checksum.type} hash - Skipping upload."
                 )
+                to_remove.append(file)
+            else:
+                print(f"├── File '{file.fileName}' is new - Uploading.")
+                
+        for file in to_remove:
+            self.files.remove(file)
 
-        print("🎉 Done\n")
+        print("🎉 Done")
+    
+    @staticmethod
+    def _check_hashes(file: File, dsFile: Dict):
+        """
+        Checks if a file has the same checksum as a file in the dataset.
+
+        Parameters:
+            file (File): The file to check.
+            dsFile (Dict): The file in the dataset to compare to.
+
+        Returns:
+            bool: True if the files have the same checksum, False otherwise.
+        """
+        
+        hash_algo, hash_value = tuple(dsFile.dataFile.checksum.values())
+
+        return file.checksum.value == hash_value and file.checksum.type == hash_algo
 
     @staticmethod
     def _retrieve_dataset_files(
