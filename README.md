@@ -31,7 +31,7 @@ python3 -m pip install git+https://github.com/JR-1991/python-dvuploader.git
 In order to perform a direct upload, you need to have a Dataverse instance running and a cloud storage provider. The following example shows how to upload files to a Dataverse instance. Simply provide the files of interest and utilize the `upload` method of a `DVUploader` instance.
 
 ```python
-from dvuploader import DVUploder, File
+from dvuploader import DVUploader, File
 
 files = [
     File(filepath="./small.txt"),
