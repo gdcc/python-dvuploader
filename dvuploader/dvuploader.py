@@ -8,7 +8,7 @@ from dvuploader.directupload import direct_upload
 from dvuploader.file import File
 
 
-class DVUploder(BaseModel):
+class DVUploader(BaseModel):
     """
     A class for uploading files to a Dataverse repository.
 

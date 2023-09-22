@@ -1,2 +1,2 @@
-from .dvuploader import DVUploder
+from .dvuploader import DVUploader
 from .file import File
