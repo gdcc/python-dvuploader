@@ -12,6 +12,7 @@ from tqdm import tqdm
 from tqdm.utils import CallbackIOWrapper
 
 from dvuploader.file import File
+from dvuploader.chunkstream import ChunkStream
 
 global MAX_RETRIES
 
@@ -86,22 +87,6 @@ def direct_upload(
     return True
 
 
-def _build_url(
-    dataverse_url: str,
-    endpoint: str,
-    **kwargs,
-) -> str:
-    """Builds a URL string, given access points and credentials"""
-
-    endpoint = "/api/datasets/:persistentId/uploadurls"
-    req = PreparedRequest()
-    req.prepare_url(urljoin(dataverse_url, endpoint), kwargs)
-
-    assert req.url is not None, f"Could not build URL for '{dataverse_url}'"
-
-    return req.url
-
-
 def _request_ticket(
     dataverse_url: str,
     api_token: str,
@@ -144,6 +129,21 @@ def _request_ticket(
         )
 
     return DottedDict(response.json()["data"])
+
+
+def _build_url(
+    dataverse_url: str,
+    endpoint: str,
+    **kwargs,
+) -> str:
+    """Builds a URL string, given access points and credentials"""
+
+    req = PreparedRequest()
+    req.prepare_url(urljoin(dataverse_url, endpoint), kwargs)
+
+    assert req.url is not None, f"Could not build URL for '{dataverse_url}'"
+
+    return req.url
 
 
 def _upload_singlepart(
@@ -215,7 +215,7 @@ def _upload_multipart(
 
     # Chunk file and retrieve paths and urls
     chunks = _chunk_file(filepath, part_size, urls)
-    tasks = [{"file": open(path, "rb"), "url": url} for path, url in chunks]
+    tasks = [{"file": streamer, "url": url} for streamer, url in chunks]
 
     try:
         rs = (
@@ -254,7 +254,6 @@ def _chunk_file(
     path: str,
     chunk_size: int,
     urls: Dict,
-    chunk_dir: str = "./chunks",
 ) -> List[str]:
     """
     Breaks a file into chunks of a specified size and saves them to disk.
@@ -270,26 +269,19 @@ def _chunk_file(
         List[str]: A list of tuples containing the path to each chunk and its corresponding upload URL.
     """
 
-    os.makedirs(chunk_dir, exist_ok=True)
+    # os.makedirs(chunk_dir, exist_ok=True)
 
-    # File to open and break apart
-    file = open(path, "rb")
+    start = 0
     uploads = []
 
-    total = 0
+    for url in urls.values():
+        size = min(chunk_size, os.stat(path).st_size - start)
+        file = open(path, "rb")
+        file.seek(start)
 
-    for key, url in urls.items():
-        byte = file.read(chunk_size)
-        chunk_path = os.path.join(chunk_dir, f"{key}.part")
+        uploads.append((ChunkStream(file, chunk_size, size), url))
 
-        with open(chunk_path, "wb") as chunk:
-            chunk.write(byte)
-
-        uploads.append((chunk_path, url))
-
-        total += os.path.getsize(chunk_path)
-
-    file.close()
+        start += chunk_size
 
     return uploads
 
