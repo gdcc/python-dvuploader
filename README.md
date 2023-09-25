@@ -20,7 +20,7 @@ Python equivalent to the [DVUploader](https://github.com/GlobalDataverseCommunit
 
 ## Getting started
 
-To get started with DVUploader, you can install it via pip
+To get started with DVUploader, you can install it via PyPI
 
 ```bash
 python3 -m pip install dvuploader
