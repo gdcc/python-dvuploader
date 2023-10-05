@@ -51,7 +51,7 @@ DV_URL = "https://demo.dataverse.org/"
 API_TOKEN = "XXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
 PID = "doi:10.70122/XXX/XXXXX"
 
-dvuploader = DVUploder(files=files)
+dvuploader = DVUploader(files=files)
 dvuploader.upload(
     api_token=API_TOKEN,
     dataverse_url=DV_URL,
