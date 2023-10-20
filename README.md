@@ -112,4 +112,4 @@ dvuploader --config-path config.yml
 
 #### CLI Binaries
 
-DVUploader ships with binaries for Linux, MacOS and Windows. You can download the binaries from the [`bin` directory](./bin) and use them in a similar fashion as described above.
+DVUploader ships with binaries for Linux, MacOS and Windows. You can download the binaries from the `bin` [directory](./bin) and use them in a similar fashion as described above.
