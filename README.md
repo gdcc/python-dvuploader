@@ -79,7 +79,7 @@ dvuploader my_file.txt my_other_file.txt \
 Alternatively, you can also supply a `config` file that contains all necessary informations for the uploader. The `config` file is a JSON/YAML file that contains the following keys:
 
 * `persistent_id`: Persistent identifier of the dataset to upload to.
-* `datavers_url`: URL of the Dataverse instance.
+* `dataverse_url`: URL of the Dataverse instance.
 * `api_token`: API token of the Dataverse instance.
 * `files`: List of files to upload. Each file is a dictionary with the following keys:
   * `filepath`: Path to the file to upload.
