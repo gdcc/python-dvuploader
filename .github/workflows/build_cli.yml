@@ -20,8 +20,9 @@ jobs:
     - run: pyinstaller -F ./dvuploader/cli.py -n dvuploader-${{ matrix.os }} --distpath ./bin
     - name: Push
       run: |
+        git pull
         git add ./bin/dvuploader-${{ matrix.os }}
-        git config --global user.name 'Build Bot'
-        git config --global user.email 'build@bot.com'
-        git commit -am "Updated CLI Binary for ${{ matrix.os }}"
+        git config --global user.name "${{ env.CI_COMMIT_AUTHOR }}"
+        git config --global user.email "username@users.noreply.github.com"
+        git commit -a -m "${{ env.CI_COMMIT_MESSAGE }}"
         git push
