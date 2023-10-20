@@ -61,11 +61,11 @@ dvuploader.upload(
 )
 ```
 
-### DVUploader CLI
+### Command Line Interface
 
 DVUploader ships with a CLI ready to use outside scripts. In order to upload files to a Dataverse instance, simply provide the files of interest, persistent identifier and credentials.
 
-#### Using command line arguments
+#### Using arguments
 
 ```bash
 dvuploader my_file.txt my_other_file.txt \
