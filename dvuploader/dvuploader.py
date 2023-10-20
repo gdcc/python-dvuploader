@@ -5,7 +5,7 @@ import os
 from typing import Dict, List
 from urllib.parse import urljoin
 
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from joblib import Parallel, delayed
 from dotted_dict import DottedDict
 
@@ -43,7 +43,7 @@ class DVUploader(BaseModel):
             dataverse_url (str): The URL of the Dataverse repository.
             api_token (str): The API token for the Dataverse repository.
             n_jobs (int): The number of parallel jobs to run. Defaults to -1.
-            
+
         Returns:
             None
         """
@@ -61,7 +61,7 @@ class DVUploader(BaseModel):
         )
 
         if not self.files:
-            print("\n❌ No files to upload")
+            print("\n❌ No files to upload\n")
             return
 
         # Upload files in parallel
@@ -78,7 +78,7 @@ class DVUploader(BaseModel):
             for position, file in enumerate(files)
         )
 
-        print("🎉 Done!")
+        print("🎉 Done!\n")
 
     def _check_duplicates(
         self,
@@ -104,9 +104,9 @@ class DVUploader(BaseModel):
         )
 
         print("\n🔎 Checking dataset files")
-        
+
         to_remove = []
-        
+
         for file in self.files:
             if any(map(lambda dsFile: self._check_hashes(file, dsFile), ds_files)):
                 print(
@@ -115,12 +115,12 @@ class DVUploader(BaseModel):
                 to_remove.append(file)
             else:
                 print(f"├── File '{file.fileName}' is new - Uploading.")
-                
+
         for file in to_remove:
             self.files.remove(file)
 
         print("🎉 Done")
-    
+
     @staticmethod
     def _check_hashes(file: File, dsFile: Dict):
         """
@@ -133,7 +133,7 @@ class DVUploader(BaseModel):
         Returns:
             bool: True if the files have the same checksum, False otherwise.
         """
-        
+
         hash_algo, hash_value = tuple(dsFile.dataFile.checksum.values())
 
         return file.checksum.value == hash_value and file.checksum.type == hash_algo
