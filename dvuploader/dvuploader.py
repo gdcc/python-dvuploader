@@ -5,12 +5,19 @@ import os
 from typing import Dict, List
 from urllib.parse import urljoin
 
-from pydantic import BaseModel, validator
+from pydantic import BaseModel
 from joblib import Parallel, delayed
 from dotted_dict import DottedDict
 
-from dvuploader.directupload import direct_upload
+from dvuploader.directupload import (
+    TICKET_ENDPOINT,
+    _abort_upload,
+    _validate_ticket_response,
+    direct_upload,
+)
 from dvuploader.file import File
+from dvuploader.nativeupload import native_upload
+from dvuploader.utils import build_url
 
 
 class DVUploader(BaseModel):
@@ -34,6 +41,7 @@ class DVUploader(BaseModel):
         dataverse_url: str,
         api_token: str,
         n_jobs: int = -1,
+        n_paralell_uploads: int = 1,
     ) -> None:
         """
         Uploads the files to the specified Dataverse repository in parallel.
@@ -64,19 +72,32 @@ class DVUploader(BaseModel):
             print("\n❌ No files to upload\n")
             return
 
-        # Upload files in parallel
+        # Check if direct upload is supported
+        has_direct_upload = self._has_direct_upload(
+            dataverse_url=dataverse_url,
+            api_token=api_token,
+            persistent_id=persistent_id,
+        )
+        print("\n⚠️  Direct upload not supported. Falling back to Native API.")
+
         print(f"\n🚀 Uploading files")
 
-        Parallel(n_jobs=n_jobs, backend="threading")(
-            delayed(direct_upload)(
-                file=file,
+        if not has_direct_upload:
+            self._execute_native_uploads(
+                files=files,
                 dataverse_url=dataverse_url,
                 api_token=api_token,
                 persistent_id=persistent_id,
-                position=position,
+                n_paralell_uploads=n_paralell_uploads,
             )
-            for position, file in enumerate(files)
-        )
+        else:
+            self._parallel_direct_upload(
+                files=files,
+                dataverse_url=dataverse_url,
+                api_token=api_token,
+                persistent_id=persistent_id,
+                n_jobs=n_jobs,
+            )
 
         print("🎉 Done!\n")
 
@@ -119,7 +140,7 @@ class DVUploader(BaseModel):
         for file in to_remove:
             self.files.remove(file)
 
-        print("🎉 Done")
+        print("🎉 Done!")
 
     @staticmethod
     def _check_hashes(file: File, dsFile: Dict):
@@ -172,3 +193,116 @@ class DVUploader(BaseModel):
             )
 
         return DottedDict(response.json()).data.latestVersion.files
+
+    @staticmethod
+    def _has_direct_upload(
+        dataverse_url: str,
+        api_token: str,
+        persistent_id: str,
+    ) -> bool:
+        """Checks if the response from the ticket request contains a direct upload URL"""
+
+        query = build_url(
+            endpoint=TICKET_ENDPOINT,
+            dataverse_url=dataverse_url,
+            key=api_token,
+            persistentId=persistent_id,
+            size=1024,
+        )
+
+        # Send HTTP request
+        response = requests.get(query).json()
+        expected_error = "Direct upload not supported for files in this dataset"
+
+        if "message" in response and expected_error in response["message"]:
+            return False
+
+        # Abort test upload for now, if direct upload is supported
+        data = DottedDict(response.json()["data"])
+        _validate_ticket_response(data)
+        _abort_upload(
+            data.abort,
+            dataverse_url,
+            api_token,
+        )
+
+    @staticmethod
+    def _execute_native_uploads(
+        files: List[File],
+        dataverse_url: str,
+        api_token: str,
+        persistent_id: str,
+        n_paralell_uploads: int,
+    ) -> List[requests.Response]:
+        """
+        Executes native uploads for the given files in parallel.
+
+        Args:
+            files (List[File]): The list of File objects to be uploaded.
+            dataverse_url (str): The URL of the Dataverse repository.
+            api_token (str): The API token for the Dataverse repository.
+            persistent_id (str): The persistent identifier of the Dataverse dataset.
+            n_paralell_uploads (int): The number of parallel uploads to execute.
+
+        Returns:
+            List[requests.Response]: The list of responses for each file upload.
+        """
+
+        tasks = [
+            native_upload(
+                file=file,
+                dataverse_url=dataverse_url,
+                api_token=api_token,
+                persistent_id=persistent_id,
+                position=position,
+            )
+            for position, file in enumerate(files)
+        ]
+
+        # Execute tasks
+        responses = grequests.map(tasks, size=n_paralell_uploads)
+
+        if not all(map(lambda x: x.status_code == 200, responses)):
+            errors = "\n".join(
+                ["\n\n❌ Failed to upload files:"]
+                + [
+                    f"├── File '{file.fileName}' could not be uploaded: {response.status_code} {response.json()['message']}"
+                    for file, response in zip(files, responses)
+                    if response.status_code != 200
+                ]
+            )
+
+            print(errors, "\n")
+
+    @staticmethod
+    def _parallel_direct_upload(
+        files: List[File],
+        dataverse_url: str,
+        api_token: str,
+        persistent_id: str,
+        n_jobs: int = -1,
+    ) -> None:
+        """
+        Perform parallel direct upload of files to the specified Dataverse repository.
+
+        Args:
+            files (List[File]): A list of File objects to be uploaded.
+            dataverse_url (str): The URL of the Dataverse repository.
+            api_token (str): The API token for the Dataverse repository.
+            persistent_id (str): The persistent identifier of the Dataverse dataset.
+            n_jobs (int): The number of parallel jobs to run. Defaults to -1.
+
+        Returns:
+            None
+        """
+
+        Parallel(n_jobs=n_jobs, backend="threading")(
+            delayed(direct_upload)(
+                file=file,
+                dataverse_url=dataverse_url,
+                api_token=api_token,
+                persistent_id=persistent_id,
+                position=position,
+            )
+            for position, file in enumerate(files)
+        )
