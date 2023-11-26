@@ -3,11 +3,12 @@ import os
 import grequests
 from dvuploader.directupload import _setup_pbar
 from dvuploader.file import File
-from dvuploader.utils import build_url
+from dvuploader.utils import build_url, retrieve_dataset_files
 from tqdm.utils import CallbackIOWrapper
 
 
 NATIVE_UPLOAD_ENDPOINT = "/api/datasets/:persistentId/add"
+NATIVE_REPLACE_ENDPOINT = "/api/files/{FILE_ID}/replace"
 
 
 def native_upload(
@@ -32,11 +33,18 @@ def native_upload(
     """
 
     pbar = _setup_pbar(file.filepath, position)
-    url = build_url(
-        dataverse_url=dataverse_url,
-        endpoint=NATIVE_UPLOAD_ENDPOINT,
-        persistentId=persistent_id,
-    )
+
+    if not file.to_replace:
+        url = build_url(
+            dataverse_url=dataverse_url,
+            endpoint=NATIVE_UPLOAD_ENDPOINT,
+            persistentId=persistent_id,
+        )
+    else:
+        url = build_url(
+            dataverse_url=dataverse_url,
+            endpoint=NATIVE_REPLACE_ENDPOINT.format(FILE_ID=file.file_id),
+        )
 
     header = {"X-Dataverse-key": api_token}
     json_data = {
