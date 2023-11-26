@@ -7,12 +7,12 @@ import grequests
 import requests
 from dotted_dict import DottedDict
 from requests.exceptions import HTTPError
-from requests.models import PreparedRequest
 from tqdm import tqdm
 from tqdm.utils import CallbackIOWrapper
 
 from dvuploader.file import File
 from dvuploader.chunkstream import ChunkStream
+from dvuploader.utils import build_url
 
 global MAX_RETRIES
 
@@ -111,7 +111,7 @@ def _request_ticket(
     """
 
     # Build request URL
-    query = _build_url(
+    query = build_url(
         endpoint=TICKET_ENDPOINT,
         dataverse_url=dataverse_url,
         key=api_token,
@@ -129,21 +129,6 @@ def _request_ticket(
         )
 
     return DottedDict(response.json()["data"])
-
-
-def _build_url(
-    dataverse_url: str,
-    endpoint: str,
-    **kwargs,
-) -> str:
-    """Builds a URL string, given access points and credentials"""
-
-    req = PreparedRequest()
-    req.prepare_url(urljoin(dataverse_url, endpoint), kwargs)
-
-    assert req.url is not None, f"Could not build URL for '{dataverse_url}'"
-
-    return req.url
 
 
 def _upload_singlepart(
