@@ -29,8 +29,7 @@ class File(BaseModel):
             raise TypeError(f"Filepath {path} is not a file.")
         elif not os.access(path, os.R_OK):
             raise TypeError(f"Filepath {path} is not readable.")
-        elif os.path.getsize(path) == 0:
-            raise ValueError(f"Filepath {path} is empty.")
+
         return path
 
     @validator("fileName", always=True)
