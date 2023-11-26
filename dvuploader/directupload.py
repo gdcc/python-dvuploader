@@ -20,6 +20,7 @@ MAX_RETRIES = 10
 TICKET_ENDPOINT = "/api/datasets/:persistentId/uploadurls"
 ADD_FILE_ENDPOINT = "/api/datasets/:persistentId/addFiles"
 UPLOAD_ENDPOINT = "/api/datasets/:persistentId/add?persistentId="
+REPLACE_ENDPOINT = "/api/files/{FILE_ID}/replace"
 
 
 def direct_upload(
@@ -126,7 +127,7 @@ def _request_ticket(
         raise HTTPError(
             f"Could not request a ticket for dataset '{persistent_id}' at '{dataverse_url}' \
                 \n\n{json.dumps(response.json(), indent=2)}"
-        )
+        )  # type: ignore
 
     return DottedDict(response.json()["data"])
 
@@ -164,7 +165,7 @@ def _upload_singlepart(
         raise HTTPError(
             f"Could not upload file \
                 \n\n{resp.headers}"
-        )
+        )  # type: ignore
 
     return storage_identifier
 
@@ -287,7 +288,7 @@ def _complete_upload(
         raise HTTPError(
             f"Could not complete upload \
                 \n\n{json.dumps(response.json(), indent=2)}"
-        )
+        )  # type: ignore
 
 
 def _abort_upload(
@@ -306,8 +307,16 @@ def _add_file_to_ds(
     file: File,
 ):
     headers = {"X-Dataverse-key": api_token}
-    url = urljoin(dataverse_url, UPLOAD_ENDPOINT + pid)
-    payload = {"jsonData": file.json(by_alias=True)}
+
+    if not file.to_replace:
+        url = urljoin(dataverse_url, UPLOAD_ENDPOINT + pid)
+    else:
+        url = build_url(
+            dataverse_url=dataverse_url,
+            endpoint=REPLACE_ENDPOINT.format(FILE_ID=file.file_id),
+        )
+
+    payload = {"jsonData": file.json(by_alias=True, exclude={"to_replace", "file_id"})}
 
     for _ in range(MAX_RETRIES):
         response = requests.post(url, headers=headers, files=payload)
