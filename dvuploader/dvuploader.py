@@ -1,9 +1,7 @@
 import grequests
 import requests
-import json
 import os
-from typing import Dict, List
-from urllib.parse import urljoin
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel
 from joblib import Parallel, delayed
@@ -17,7 +15,7 @@ from dvuploader.directupload import (
 )
 from dvuploader.file import File
 from dvuploader.nativeupload import native_upload
-from dvuploader.utils import build_url
+from dvuploader.utils import build_url, retrieve_dataset_files
 
 
 class DVUploader(BaseModel):
@@ -118,7 +116,7 @@ class DVUploader(BaseModel):
         Prints a message for each file that already exists in the dataset with the same checksum.
         """
 
-        ds_files = self._retrieve_dataset_files(
+        ds_files = retrieve_dataset_files(
             dataverse_url=dataverse_url,
             persistent_id=persistent_id,
             api_token=api_token,
@@ -129,7 +127,11 @@ class DVUploader(BaseModel):
         to_remove = []
 
         for file in self.files:
-            if any(map(lambda dsFile: self._check_hashes(file, dsFile), ds_files)):
+            has_same_hash = any(
+                map(lambda dsFile: self._check_hashes(file, dsFile), ds_files)
+            )
+
+            if has_same_hash and file.checksum:
                 print(
                     f"├── File '{file.fileName}' already exists with same {file.checksum.type} hash - Skipping upload."
                 )
@@ -137,13 +139,45 @@ class DVUploader(BaseModel):
             else:
                 print(f"├── File '{file.fileName}' is new - Uploading.")
 
+                # If present in dataset, replace file
+                file.file_id = self._get_file_id(file, ds_files)
+                file.to_replace = True if file.file_id else False
+
         for file in to_remove:
             self.files.remove(file)
 
-        print("🎉 Done!")
+        print("🎉 Done")
 
     @staticmethod
-    def _check_hashes(file: File, dsFile: Dict):
+    def _get_file_id(
+        file: File,
+        ds_files: List[DottedDict],
+    ) -> Optional[str]:
+        """
+        Get the file ID for a given file in a dataset.
+
+        Args:
+            file (File): The file object to find the ID for.
+            ds_files (List[Dict]): List of dictionary objects representing dataset files.
+            persistent_id (str): The persistent ID of the dataset.
+
+        Returns:
+            str: The ID of the file.
+
+        Raises:
+            ValueError: If the file cannot be found in the dataset.
+        """
+
+        # Find the file that matches label and directoryLabel
+        for ds_file in ds_files:
+            dspath = os.path.join(ds_file.get("directoryLabel", ""), ds_file.label)
+            fpath = os.path.join(file.directoryLabel, file.fileName)  # type: ignore
+
+            if dspath == fpath:
+                return ds_file.dataFile.id
+
+    @staticmethod
+    def _check_hashes(file: File, dsFile: DottedDict):
         """
         Checks if a file has the same checksum as a file in the dataset.
 
@@ -155,44 +189,12 @@ class DVUploader(BaseModel):
             bool: True if the files have the same checksum, False otherwise.
         """
 
+        if not file.checksum:
+            return False
+
         hash_algo, hash_value = tuple(dsFile.dataFile.checksum.values())
 
         return file.checksum.value == hash_value and file.checksum.type == hash_algo
-
-    @staticmethod
-    def _retrieve_dataset_files(
-        dataverse_url: str,
-        persistent_id: str,
-        api_token: str,
-    ):
-        """
-        Retrieve the files of a specific dataset from a Dataverse repository.
-
-        Parameters:
-            dataverse_url (str): The base URL of the Dataverse repository.
-            persistent_id (str): The persistent identifier (PID) of the dataset.
-
-        Returns:
-            list: A list of files in the dataset.
-
-        Raises:
-            HTTPError: If the request to the Dataverse repository fails.
-        """
-
-        DATASET_ENDPOINT = "/api/datasets/:persistentId/?persistentId={0}"
-
-        response = requests.get(
-            urljoin(dataverse_url, DATASET_ENDPOINT.format(persistent_id)),
-            headers={"X-Dataverse-key": api_token},
-        )
-
-        if response.status_code != 200:
-            raise requests.HTTPError(
-                f"Could not download dataset '{persistent_id}' at '{dataverse_url}' \
-                    \n\n{json.dumps(response.json(), indent=2)}"
-            )
-
-        return DottedDict(response.json()).data.latestVersion.files
 
     @staticmethod
     def _has_direct_upload(
@@ -226,6 +228,8 @@ class DVUploader(BaseModel):
             api_token,
         )
 
+        return True
+
     @staticmethod
     def _execute_native_uploads(
         files: List[File],
@@ -233,7 +237,7 @@ class DVUploader(BaseModel):
         api_token: str,
         persistent_id: str,
         n_paralell_uploads: int,
-    ) -> List[requests.Response]:
+    ):
         """
         Executes native uploads for the given files in parallel.
 
