@@ -1,7 +1,7 @@
 import os
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, validator, ValidationError
+from pydantic import BaseModel, Field, validator
 
 from dvuploader.checksum import Checksum, ChecksumTypes
 
@@ -20,6 +20,8 @@ class File(BaseModel):
     storageIdentifier: Optional[str] = None
     fileName: Optional[str] = None
     checksum: Optional[Checksum] = None
+    to_replace: bool = False
+    file_id: Optional[str] = None
 
     @staticmethod
     def _validate_filepath(path):
