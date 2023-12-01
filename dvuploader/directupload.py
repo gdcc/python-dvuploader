@@ -29,6 +29,7 @@ def direct_upload(
     dataverse_url: str,
     api_token: str,
     position: int,
+    n_parallel_uploads: int,
 ) -> bool:
     """
     Uploads a file to a Dataverse collection using direct upload.
@@ -39,6 +40,7 @@ def direct_upload(
         dataverse_url (str): The URL of the Dataverse instance to upload to.
         api_token (str): The API token to use for authentication.
         position (int): The position of the file in the list of files to upload.
+        n_parallel_uploads (int): The number of parallel uploads to perform.
 
     Returns:
         bool: True if the upload was successful, False otherwise.
@@ -69,6 +71,7 @@ def direct_upload(
             dataverse_url=dataverse_url,
             api_token=api_token,
             pbar=pbar,
+            n_parallel_uploads=n_parallel_uploads,
         )
 
     result = _add_file_to_ds(
@@ -76,6 +79,7 @@ def direct_upload(
         persistent_id,
         api_token,
         file,
+        n_parallel_uploads,
     )
 
     if result is True:
@@ -176,6 +180,7 @@ def _upload_multipart(
     dataverse_url: str,
     api_token: str,
     pbar: tqdm,
+    n_parallel_uploads: int,
 ):
     """
     Uploads a file to Dataverse using multipart upload.
@@ -186,6 +191,7 @@ def _upload_multipart(
         dataverse_url (str): The URL of the Dataverse instance.
         api_token (str): The API token for the Dataverse instance.
         pbar (tqdm): A progress bar to track the upload progress.
+        n_parallel_uploads (int): The number of parallel uploads to perform.
 
     Returns:
         str: The storage identifier for the uploaded file.
@@ -214,7 +220,10 @@ def _upload_multipart(
         )
 
         # Execute upload
-        responses = grequests.map(rs)
+        responses = grequests.map(
+            requests=rs,
+            size=n_parallel_uploads,
+        )
         e_tags = [response.headers["ETag"] for response in responses]
 
     except Exception as e:
