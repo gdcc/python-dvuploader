@@ -49,6 +49,7 @@ class DVUploader(BaseModel):
             dataverse_url (str): The URL of the Dataverse repository.
             api_token (str): The API token for the Dataverse repository.
             n_jobs (int): The number of parallel jobs to run. Defaults to -1.
+            n_paralell_uploads (int): The number of parallel uploads to execute. In the case of direct upload, this restricts the amount of parallel chunks per upload. Please use n_jobs to control parallel files.
 
         Returns:
             None
@@ -63,7 +64,9 @@ class DVUploader(BaseModel):
 
         # Sort files by size
         files = sorted(
-            self.files, key=lambda x: os.path.getsize(x.filepath), reverse=True
+            self.files,
+            key=lambda x: os.path.getsize(x.filepath),
+            reverse=True,
         )
 
         if not self.files:
@@ -95,6 +98,7 @@ class DVUploader(BaseModel):
                 api_token=api_token,
                 persistent_id=persistent_id,
                 n_jobs=n_jobs,
+                n_paralell_uploads=n_paralell_uploads,
             )
 
         print("🎉 Done!\n")
@@ -284,6 +288,7 @@ class DVUploader(BaseModel):
         dataverse_url: str,
         api_token: str,
         persistent_id: str,
+        n_paralell_uploads: int,
         n_jobs: int = -1,
     ) -> None:
         """
@@ -307,6 +312,7 @@ class DVUploader(BaseModel):
                 api_token=api_token,
                 persistent_id=persistent_id,
                 position=position,
+                n_paralell_uploads=n_paralell_uploads,
             )
             for position, file in enumerate(files)
         )
