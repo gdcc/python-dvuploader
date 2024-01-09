@@ -1,98 +1,169 @@
+import asyncio
+from io import BytesIO
 import json
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin
-
-import grequests
-import requests
-from dotted_dict import DottedDict
-from requests.exceptions import HTTPError
-from tqdm import tqdm
-from tqdm.utils import CallbackIOWrapper
+import aiofiles
+import aiohttp
 
 from dvuploader.file import File
-from dvuploader.chunkstream import ChunkStream
 from dvuploader.utils import build_url
 
-global MAX_RETRIES
+TESTING = os.environ.get("DVUPLOADER_TESTING", False)
 
-MAX_RETRIES = 10
 TICKET_ENDPOINT = "/api/datasets/:persistentId/uploadurls"
 ADD_FILE_ENDPOINT = "/api/datasets/:persistentId/addFiles"
 UPLOAD_ENDPOINT = "/api/datasets/:persistentId/add?persistentId="
 REPLACE_ENDPOINT = "/api/files/{FILE_ID}/replace"
 
 
-def direct_upload(
+async def direct_upload(
+    files: List[File],
+    dataverse_url: str,
+    api_token: str,
+    persistent_id: str,
+    progress,
+    pbars,
+    n_parallel_uploads: int,
+) -> None:
+    """
+    Perform parallel direct upload of files to the specified Dataverse repository.
+
+    Args:
+        files (List[File]): A list of File objects to be uploaded.
+        dataverse_url (str): The URL of the Dataverse repository.
+        api_token (str): The API token for the Dataverse repository.
+        persistent_id (str): The persistent identifier of the Dataverse dataset.
+        progress: The progress object to track the upload progress.
+        pbars: A list of progress bars to display the upload progress for each file.
+        n_parallel_uploads (int): The number of parallel uploads to perform.
+
+    Returns:
+        None
+    """
+
+    headers = {
+        "X-Dataverse-key": api_token,
+    }
+    params = {
+        "headers": headers,
+        "connector": aiohttp.TCPConnector(limit=n_parallel_uploads),
+    }
+    async with aiohttp.ClientSession(**params) as session:
+        tasks = [
+            _upload_to_store(
+                session=session,
+                file=file,
+                dataverse_url=dataverse_url,
+                api_token=api_token,
+                persistent_id=persistent_id,
+                pbar=pbar,
+                progress=progress,
+                delay=0.0,
+            )
+            for pbar, file in zip(pbars, files)
+        ]
+
+        upload_results = await asyncio.gather(*tasks)
+
+    for status, file in upload_results:
+        if status is True:
+            continue
+
+        print(f"❌ Failed to upload file '{file.fileName}' to the S3 storage")
+
+    connector = aiohttp.TCPConnector(limit=4)
+    pbar = progress.add_task("╰── [bold white]Registering files", total=len(files))
+    results = []
+    async with aiohttp.ClientSession(
+        headers=headers,
+        connector=connector,
+    ) as session:
+        for file in files:
+            results.append(
+                await _add_file_to_ds(
+                    session=session,
+                    file=file,
+                    dataverse_url=dataverse_url,
+                    pid=persistent_id,
+                )
+            )
+
+            progress.update(pbar, advance=1)
+
+    for file, status in zip(files, results):
+        if status is False:
+            print(f"❌ Failed to register file '{file.fileName}' at Dataverse")
+
+
+async def _upload_to_store(
+    session: aiohttp.ClientSession,
     file: File,
     persistent_id: str,
     dataverse_url: str,
     api_token: str,
-    position: int,
-    n_parallel_uploads: int,
-) -> bool:
+    pbar,
+    progress,
+    delay: float,
+):
     """
     Uploads a file to a Dataverse collection using direct upload.
 
     Args:
+        session (aiohttp.ClientSession): The aiohttp client session.
         file (File): The file object to upload.
         persistent_id (str): The persistent identifier of the Dataverse dataset to upload to.
         dataverse_url (str): The URL of the Dataverse instance to upload to.
         api_token (str): The API token to use for authentication.
-        position (int): The position of the file in the list of files to upload.
-        n_parallel_uploads (int): The number of parallel uploads to perform.
+        pbar: The progress bar object.
+        progress: The progress object.
+        delay (float): The delay in seconds before starting the upload.
 
     Returns:
-        bool: True if the upload was successful, False otherwise.
+        tuple: A tuple containing the upload status (bool) and the file object.
     """
+
+    await asyncio.sleep(delay)
 
     assert file.fileName is not None, "File name is None"
     assert os.path.exists(file.filepath), f"File {file.filepath} does not exist"
 
     file_size = os.path.getsize(file.filepath)
-    pbar = _setup_pbar(file.filepath, position)
-    response = _request_ticket(
+    ticket = await _request_ticket(
+        session=session,
         dataverse_url=dataverse_url,
         api_token=api_token,
         file_size=file_size,
         persistent_id=persistent_id,
     )
 
-    if not "urls" in response:
-        file.storageIdentifier = _upload_singlepart(
-            response=response,
+    if not "urls" in ticket:
+        status, storage_identifier = await _upload_singlepart(
+            session=session,
+            ticket=ticket,
             filepath=file.filepath,
             pbar=pbar,
+            progress=progress,
         )
+
     else:
-        file.storageIdentifier = _upload_multipart(
-            response=response,
+        status, storage_identifier = await _upload_multipart(
+            session=session,
+            response=ticket,
             filepath=file.filepath,
             dataverse_url=dataverse_url,
-            api_token=api_token,
             pbar=pbar,
-            n_parallel_uploads=n_parallel_uploads,
+            progress=progress,
         )
 
-    result = _add_file_to_ds(
-        dataverse_url,
-        persistent_id,
-        api_token,
-        file,
-        n_parallel_uploads,
-    )
+    file.storageIdentifier = storage_identifier
 
-    if result is True:
-        pbar.bar_format = f"├── {file.filepath} uploaded!"
-    else:
-        pbar.bar_format = f"├── {file.filepath} failed to upload!"
-
-    pbar.close()
-
-    return True
+    return status, file
 
 
-def _request_ticket(
+async def _request_ticket(
+    session: aiohttp.ClientSession,
     dataverse_url: str,
     api_token: str,
     persistent_id: str,
@@ -100,139 +171,187 @@ def _request_ticket(
 ) -> Dict:
     """Requests a ticket from a Dataverse collection to perform an upload.
 
-    This method will return a URL and storageIdentifier that later on is
-    used to perform the direct upload.
-
-    Please note, your Dataverse installation and collection should have
-    enabled Direct Upload to an S3 bucket to perform the upload.
+    This method will send a request to the Dataverse API to obtain a ticket
+    for performing a direct upload to an S3 bucket. The ticket contains a URL
+    and storageIdentifier that will be used later to perform the upload.
 
     Args:
-        dataverse_url (str): URL to the Dataverse installation
-        api_token (str): API Token used to access the dataset.
-        persistent_id (str): Persistent identifier of the dataset of interest.
+        session (aiohttp.ClientSession): The aiohttp client session to use for the request.
+        dataverse_url (str): The URL of the Dataverse installation.
+        api_token (str): The API token used to access the dataset.
+        persistent_id (str): The persistent identifier of the dataset of interest.
+        file_size (int): The size of the file to be uploaded.
 
     Returns:
-        Dict: Response from the Dataverse API
+        Dict: The response from the Dataverse API, containing the ticket information.
     """
-
-    # Build request URL
-    query = build_url(
-        endpoint=TICKET_ENDPOINT,
-        dataverse_url=dataverse_url,
+    url = build_url(
+        endpoint=urljoin(dataverse_url, TICKET_ENDPOINT),
         key=api_token,
         persistentId=persistent_id,
         size=file_size,
     )
 
-    # Send HTTP request
-    response = requests.get(query)
-
-    if response.status_code != 200:
-        raise HTTPError(
-            f"Could not request a ticket for dataset '{persistent_id}' at '{dataverse_url}' \
-                \n\n{json.dumps(response.json(), indent=2)}"
-        )  # type: ignore
-
-    return DottedDict(response.json()["data"])
+    async with session.get(url) as response:
+        response.raise_for_status()
+        payload = await response.json()
+        return payload["data"]
 
 
-def _upload_singlepart(
-    response: Dict,
+async def _upload_singlepart(
+    session: aiohttp.ClientSession,
+    ticket: Dict,
     filepath: str,
-    pbar: tqdm,
-) -> str:
+    pbar,
+    progress,
+) -> Tuple[bool, str]:
     """
     Uploads a single part of a file to a remote server using HTTP PUT method.
 
     Args:
-        response (Dict): A dictionary containing the response from the server.
+        session (aiohttp.ClientSession): The aiohttp client session used for the upload.
+        ticket (Dict): A dictionary containing the response from the server.
         filepath (str): The path to the file to be uploaded.
         pbar (tqdm): A progress bar object to track the upload progress.
+        progress: The progress object used to update the progress bar.
 
     Returns:
-        str: The storage identifier of the uploaded file.
+        Tuple[bool, str]: A tuple containing the status of the upload (True for success, False for failure)
+                          and the storage identifier of the uploaded file.
     """
+    assert "url" in ticket, "Couldnt find 'url'"
 
-    assert "url" in response, "Couldnt find 'url'"
+    if TESTING:
+        ticket["url"] = ticket["url"].replace("localhost", "localstack", 1)
 
-    headers = {"x-amz-tagging": "dv-state=temp"}
-    storage_identifier = response.storageIdentifier  # type: ignore
-    wrapped_file = CallbackIOWrapper(pbar.update, open(filepath, "rb"))
-    resp = requests.put(
-        response.url,  # type: ignore
-        data=wrapped_file,  # type: ignore
-        stream=True,
-        headers=headers,
-    )
+    storage_identifier = ticket["storageIdentifier"]
+    params = {
+        "url": ticket["url"],
+        "data": open(filepath, "rb"),
+    }
 
-    if resp.status_code != 200:
-        raise HTTPError(
-            f"Could not upload file \
-                \n\n{resp.headers}"
-        )  # type: ignore
+    async with session.put(**params) as response:
+        status = response.status == 200
 
-    return storage_identifier
+        if status:
+            progress.update(pbar, advance=os.path.getsize(filepath))
+
+        return status, storage_identifier
 
 
-def _upload_multipart(
+async def _upload_multipart(
+    session: aiohttp.ClientSession,
     response: Dict,
     filepath: str,
     dataverse_url: str,
-    api_token: str,
-    pbar: tqdm,
-    n_parallel_uploads: int,
+    pbar,
+    progress,
 ):
     """
     Uploads a file to Dataverse using multipart upload.
 
     Args:
+        session (aiohttp.ClientSession): The aiohttp client session.
         response (Dict): The response from the Dataverse API containing the upload ticket information.
         filepath (str): The path to the file to be uploaded.
         dataverse_url (str): The URL of the Dataverse instance.
-        api_token (str): The API token for the Dataverse instance.
         pbar (tqdm): A progress bar to track the upload progress.
-        n_parallel_uploads (int): The number of parallel uploads to perform.
+        progress: The progress callback function.
 
     Returns:
-        str: The storage identifier for the uploaded file.
+        Tuple[bool, str]: A tuple containing a boolean indicating the success of the upload and the storage identifier for the uploaded file.
     """
 
     _validate_ticket_response(response)
 
-    abort = response.abort  # type: ignore
-    complete = response.complete  # type: ignore
-    part_size = response.partSize  # type: ignore
-    urls = response.urls  # type: ignore
-    storage_identifier = response.storageIdentifier  # type: ignore
+    abort = response["abort"]
+    complete = response["complete"]
+    part_size = response["partSize"]
+    urls = iter(response["urls"].values())
+    storage_identifier = response["storageIdentifier"]
 
     # Chunk file and retrieve paths and urls
-    chunks = _chunk_file(filepath, part_size, urls)
-    tasks = [{"file": streamer, "url": url} for streamer, url in chunks]
+    chunk_size = int(part_size)
 
     try:
-        rs = (
-            grequests.put(
-                task["url"],
-                data=CallbackIOWrapper(pbar.update, task["file"], "read"),
-                stream=True,
-            )
-            for task in tasks
+        e_tags = await _chunked_upload(
+            filepath=filepath,
+            session=session,
+            urls=urls,
+            chunk_size=chunk_size,
+            pbar=pbar,
+            progress=progress,
         )
-
-        # Execute upload
-        responses = grequests.map(
-            requests=rs,
-            size=n_parallel_uploads,
-        )
-        e_tags = [response.headers["ETag"] for response in responses]
-
     except Exception as e:
-        _abort_upload(abort, dataverse_url, api_token)
+        print(f"❌ Failed to upload file '{filepath}' to the S3 storage")
+        await _abort_upload(
+            session=session,
+            url=abort,
+            dataverse_url=dataverse_url,
+        )
         raise e
 
-    _complete_upload(complete, dataverse_url, e_tags, api_token)
+    await _complete_upload(
+        session=session,
+        url=complete,
+        dataverse_url=dataverse_url,
+        e_tags=e_tags,
+    )
 
-    return storage_identifier
+    return True, storage_identifier
+
+
+async def _chunked_upload(
+    filepath: str,
+    session: aiohttp.ClientSession,
+    urls,
+    chunk_size: int,
+    pbar,
+    progress,
+):
+    """
+    Uploads a file in chunks to multiple URLs using the provided session.
+
+    Args:
+        filepath (str): The path of the file to upload.
+        session (aiohttp.ClientSession): The aiohttp client session to use for the upload.
+        urls: An iterable of URLs to upload the file chunks to.
+        chunk_size (int): The size of each chunk in bytes.
+        pbar (tqdm): The progress bar to update during the upload.
+        progress: The progress object to track the upload progress.
+
+    Returns:
+        List[str]: A list of ETags returned by the server for each uploaded chunk.
+    """
+    e_tags = []
+    async with aiofiles.open(filepath, "rb") as f:
+        chunk = await f.read(chunk_size)
+        e_tags.append(
+            await _upload_chunk(
+                session=session,
+                url=next(urls),
+                file=BytesIO(chunk),
+            )
+        )
+
+        progress.update(pbar, advance=len(chunk))
+
+        while chunk:
+            chunk = await f.read(chunk_size)
+            progress.update(pbar, advance=len(chunk))
+
+            if not chunk:
+                break
+            else:
+                e_tags.append(
+                    await _upload_chunk(
+                        session=session,
+                        url=next(urls),
+                        file=BytesIO(chunk),
+                    )
+                )
+
+    return e_tags
 
 
 def _validate_ticket_response(response: Dict) -> None:
@@ -245,105 +364,119 @@ def _validate_ticket_response(response: Dict) -> None:
     assert "storageIdentifier" in response, "Could not find 'storageIdentifier'"
 
 
-def _chunk_file(
-    path: str,
-    chunk_size: int,
-    urls: Dict,
-) -> List[str]:
+async def _upload_chunk(
+    session: aiohttp.ClientSession,
+    url: str,
+    file: BytesIO,
+):
     """
-    Breaks a file into chunks of a specified size and saves them to disk.
-    Returns a list of tuples containing the path to each chunk and its corresponding upload URL.
+    Uploads a chunk of data to the specified URL using the provided session.
 
     Args:
-        path (str): The path to the file to be chunked.
-        chunk_size (int): The size of each chunk in bytes.
-        urls (Dict): A dictionary containing the upload URLs for each chunk.
-        chunk_dir (str, optional): The directory to save the chunks in. Defaults to "./chunks".
+        session (aiohttp.ClientSession): The session to use for the upload.
+        url (str): The URL to upload the chunk to.
+        file (ChunkStream): The chunk of data to upload.
+        pbar: The progress bar to update during the upload.
 
     Returns:
-        List[str]: A list of tuples containing the path to each chunk and its corresponding upload URL.
+        str: The ETag value of the uploaded chunk.
     """
 
-    # os.makedirs(chunk_dir, exist_ok=True)
+    if TESTING:
+        url = url.replace("localstack", "localhost", 1)
 
-    start = 0
-    uploads = []
+    params = {
+        "url": url,
+        "data": file,
+    }
 
-    for url in urls.values():
-        size = min(chunk_size, os.stat(path).st_size - start)
-        file = open(path, "rb")
-        file.seek(start)
-
-        uploads.append((ChunkStream(file, chunk_size, size), url))
-
-        start += chunk_size
-
-    return uploads
+    async with session.put(**params) as response:
+        response.raise_for_status()
+        return response.headers.get("ETag")
 
 
-def _complete_upload(
+async def _complete_upload(
+    session: aiohttp.ClientSession,
     url: str,
     dataverse_url: str,
-    e_tags: List[str],
-    api_token: str,
+    e_tags: List[Optional[str]],
 ) -> None:
-    """Completes the upload by sending the E tags"""
+    """Completes the upload by sending the E tags
 
-    headers = {"X-Dataverse-key": api_token}
+    Args:
+        session (aiohttp.ClientSession): The aiohttp client session.
+        url (str): The URL to send the PUT request to.
+        dataverse_url (str): The base URL of the Dataverse instance.
+        e_tags (List[str]): The list of E tags to send in the payload.
+
+    Raises:
+        aiohttp.ClientResponseError: If the response status code is not successful.
+    """
+
     payload = json.dumps({str(index + 1): e_tag for index, e_tag in enumerate(e_tags)})
-    response = requests.put(urljoin(dataverse_url, url), data=payload, headers=headers)
 
-    if response.status_code != 200:
-        raise HTTPError(
-            f"Could not complete upload \
-                \n\n{json.dumps(response.json(), indent=2)}"
-        )  # type: ignore
+    async with session.put(urljoin(dataverse_url, url), data=payload) as response:
+        response.raise_for_status()
 
 
-def _abort_upload(
+async def _abort_upload(
+    session: aiohttp.ClientSession,
     url: str,
     dataverse_url: str,
-    api_token: str,
 ):
-    headers = {"X-Dataverse-key": api_token}
-    requests.delete(urljoin(dataverse_url, url), headers=headers)
+    """
+    Aborts an ongoing upload by sending a DELETE request to the specified URL.
+
+    Args:
+        session (aiohttp.ClientSession): The aiohttp client session.
+        url (str): The URL to send the DELETE request to.
+        dataverse_url (str): The base URL of the Dataverse instance.
+
+    Raises:
+        aiohttp.ClientResponseError: If the DELETE request fails.
+    """
+    async with session.delete(urljoin(dataverse_url, url)) as response:
+        response.raise_for_status()
 
 
-def _add_file_to_ds(
+async def _add_file_to_ds(
+    session: aiohttp.ClientSession,
     dataverse_url: str,
     pid: str,
-    api_token: str,
     file: File,
-):
-    headers = {"X-Dataverse-key": api_token}
+) -> bool:
+    """
+    Adds a file to a Dataverse dataset.
 
+    Args:
+        session (aiohttp.ClientSession): The aiohttp client session.
+        dataverse_url (str): The URL of the Dataverse instance.
+        pid (str): The persistent identifier of the dataset.
+        file (File): The file to be added.
+
+    Returns:
+        bool: True if the file was added successfully, False otherwise.
+    """
     if not file.to_replace:
         url = urljoin(dataverse_url, UPLOAD_ENDPOINT + pid)
     else:
         url = build_url(
             dataverse_url=dataverse_url,
-            endpoint=REPLACE_ENDPOINT.format(FILE_ID=file.file_id),
+            endpoint=urljoin(
+                dataverse_url,
+                REPLACE_ENDPOINT.format(FILE_ID=file.file_id),
+            ),
         )
 
-    payload = {"jsonData": file.json(by_alias=True, exclude={"to_replace", "file_id"})}
-
-    for _ in range(MAX_RETRIES):
-        response = requests.post(url, headers=headers, files=payload)
-        if response.status_code == 200:
-            return True
-
-    return False
-
-
-def _setup_pbar(fpath: str, position: int, pre: str = "├── "):
-    return tqdm(
-        total=os.stat(fpath).st_size,
-        unit="B",
-        unit_scale=True,
-        unit_divisor=1024,
-        ascii=" >=",
-        desc=pre + f"{fpath} ",
-        bar_format="{l_bar}{bar:20}{r_bar}{bar:-10b}",
-        position=position,
-        leave=True,
+    json_data = file.model_dump_json(
+        by_alias=True,
+        exclude={"to_replace", "file_id"},
+        indent=2,
     )
+
+    with aiohttp.MultipartWriter("form-data") as writer:
+        json_part = writer.append(json_data)
+        json_part.set_content_disposition("form-data", name="jsonData")
+
+        async with session.post(url, data=writer) as response:
+            return response.status == 200
