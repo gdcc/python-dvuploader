@@ -1,0 +1,7 @@
+persistent_id: doi:10.70122/XXX/XXXXX
+dataverse_url: https://demo.dataverse.org/
+api_token: XXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+files:
+    - filepath: ./tests/fixtures/add_dir_files/somefile.txt
+    - filepath: ./tests/fixtures/add_dir_files/anotherfile.txt
+      directoryLabel: some/dir
