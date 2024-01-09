@@ -10,7 +10,7 @@ import aiohttp
 from dvuploader.file import File
 from dvuploader.utils import build_url
 
-TESTING = os.environ.get("DVUPLOADER_TESTING", False)
+TESTING = bool(os.environ.get("DVUPLOADER_TESTING", False))
 
 TICKET_ENDPOINT = "/api/datasets/:persistentId/uploadurls"
 ADD_FILE_ENDPOINT = "/api/datasets/:persistentId/addFiles"
@@ -222,7 +222,7 @@ async def _upload_singlepart(
     assert "url" in ticket, "Couldnt find 'url'"
 
     if TESTING:
-        ticket["url"] = ticket["url"].replace("localhost", "localstack", 1)
+        ticket["url"] = ticket["url"].replace("localstack", "localhost", 1)
 
     storage_identifier = ticket["storageIdentifier"]
     params = {
