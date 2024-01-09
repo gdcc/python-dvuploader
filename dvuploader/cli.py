@@ -2,7 +2,7 @@ import yaml
 import typer
 
 from pydantic import BaseModel
-from typing import List, Tuple
+from typing import List, Optional
 from dvuploader import DVUploader, File
 
 
@@ -11,12 +11,13 @@ class CliInput(BaseModel):
     dataverse_url: str
     persistent_id: str
     files: List[File]
+    n_jobs: int = 1
 
 
 app = typer.Typer()
 
 
-def _parse_yaml_config(path: str) -> Tuple[List[File], str, str, str]:
+def _parse_yaml_config(path: str) -> CliInput:
     """
     Parses a configuration file and returns a Class instance
     containing a list of File objects, a persistent ID, a Dataverse URL,
@@ -32,7 +33,7 @@ def _parse_yaml_config(path: str) -> Tuple[List[File], str, str, str]:
     Raises:
         ValueError: If the configuration file is invalid.
     """
-    return CliInput(**yaml.safe_load(open(path)))
+    return CliInput(**yaml.safe_load(open(path)))  # type: ignore
 
 
 def _validate_inputs(
@@ -40,9 +41,23 @@ def _validate_inputs(
     pid: str,
     dataverse_url: str,
     api_token: str,
-    config_path: str,
+    config_path: Optional[str],
 ) -> None:
-    if config_path and len(filepaths) > 0:
+    """
+    Validates the inputs for the dvuploader command.
+
+    Args:
+        filepaths (List[str]): List of filepaths to be uploaded.
+        pid (str): Persistent identifier of the dataset.
+        dataverse_url (str): URL of the Dataverse instance.
+        api_token (str): API token for authentication.
+        config_path (Optional[str]): Path to the configuration file.
+
+    Raises:
+        typer.BadParameter: If both a configuration file and a list of filepaths are specified.
+        typer.BadParameter: If neither a configuration file nor metadata parameters are specified.
+    """
+    if config_path is not None and len(filepaths) > 0:
         raise typer.BadParameter(
             "Cannot specify both a JSON/YAML file and a list of filepaths."
         )
@@ -80,15 +95,27 @@ def main(
         default=None,
         help="The URL of the Dataverse repository.",
     ),
-    config_path: str = typer.Option(
+    config_path: Optional[str] = typer.Option(
         default=None,
         help="Path to a JSON/YAML file containing specifications for the files to upload. Defaults to None.",
     ),
     n_jobs: int = typer.Option(
-        default=-1,
+        default=1,
         help="The number of parallel jobs to run. Defaults to -1.",
     ),
 ):
+    """
+    Uploads files to a Dataverse repository.
+
+    Args:
+        filepaths (List[str]): A list of filepaths to upload.
+        pid (str): The persistent identifier of the Dataverse dataset.
+        api_token (str): The API token for the Dataverse repository.
+        dataverse_url (str): The URL of the Dataverse repository.
+        config_path (Optional[str]): Path to a JSON/YAML file containing specifications for the files to upload. Defaults to None.
+        n_jobs (int): The number of parallel jobs to run. Defaults to -1.
+    """
+
     _validate_inputs(
         filepaths=filepaths,
         pid=pid,
@@ -113,9 +140,9 @@ def main(
         persistent_id=cli_input.persistent_id,
         dataverse_url=cli_input.dataverse_url,
         api_token=cli_input.api_token,
-        n_jobs=n_jobs,
+        n_parallel_uploads=n_jobs,
     )
 
 
 if __name__ == "__main__":
-    typer.run(main)
+    app()
