@@ -2,7 +2,7 @@
   Dataverse Uploader</br>
   <a href="https://badge.fury.io/py/dvuploader"><img src="https://badge.fury.io/py/dvuploader.svg" alt="PyPI version" height="18"></a>
   <img src="https://img.shields.io/badge/python-3.8|3.9|3.10|3.11-blue.svg" alt="Build Badge">
-  <img src="https://github.com/gdcc/python-dvuploader/actions/workflows/test.yaml/badge.svg" alt="Build Badge">
+  <img src="https://github.com/gdcc/python-dvuploader/actions/workflows/test.yml/badge.svg" alt="Build Badge">
 </h1>
 
 Python equivalent to the [DVUploader](https://github.com/GlobalDataverseCommunityConsortium/dataverse-uploader) written in Java. Complements other libraries written in Python and facilitates the upload of files to a Dataverse instance via [Direct Upload](https://guides.dataverse.org/en/latest/developers/s3-direct-upload-api.html).
