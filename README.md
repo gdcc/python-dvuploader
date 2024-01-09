@@ -15,9 +15,7 @@ Python equivalent to the [DVUploader](https://github.com/GlobalDataverseCommunit
 
 -----
 
-<p align="center">
-    <img src="./static/demo.gif" width="600"/>
-</p>
+https://github.com/gdcc/python-dvuploader/assets/30547301/671131b1-d188-4433-9f77-9ec0ed2af36e
 
 -----
 
