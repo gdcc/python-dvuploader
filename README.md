@@ -1,6 +1,9 @@
-<p align="center">
-    <h1 align="center">Python DVUploader</h1>
-</p>
+<h1 align="center">
+  Dataverse Uploader</br>
+  <a href="https://badge.fury.io/py/dvuploader"><img src="https://badge.fury.io/py/dvuploader.svg" alt="PyPI version" height="18"></a>
+  <img src="https://img.shields.io/badge/python-3.8|3.9|3.10|3.11-blue.svg" alt="Build Badge">
+  <img src="https://github.com/gdcc/python-dvuploader/actions/workflows/test.yaml/badge.svg" alt="Build Badge">
+</h1>
 
 Python equivalent to the [DVUploader](https://github.com/GlobalDataverseCommunityConsortium/dataverse-uploader) written in Java. Complements other libraries written in Python and facilitates the upload of files to a Dataverse instance via [Direct Upload](https://guides.dataverse.org/en/latest/developers/s3-direct-upload-api.html).
 
@@ -41,23 +44,27 @@ python3 -m pip install .
 In order to perform a direct upload, you need to have a Dataverse instance running and a cloud storage provider. The following example shows how to upload files to a Dataverse instance. Simply provide the files of interest and utilize the `upload` method of a `DVUploader` instance.
 
 ```python
-from dvuploader import DVUploader, File
+import dvuploader as dv
 
+
+# Add file individually
 files = [
-    File(filepath="./small.txt"),
-    File(directoryLabel="some/dir", filepath="./medium.txt"),
-    File(directoryLabel="some/dir", filepath="./big.txt"),
+    dv.File(filepath="./small.txt"),
+    dv.File(directoryLabel="some/dir", filepath="./medium.txt"),
+    dv.File(directoryLabel="some/dir", filepath="./big.txt"),
+    *dv.add_directory("./data"), # Add an entire directory
 ]
 
 DV_URL = "https://demo.dataverse.org/"
 API_TOKEN = "XXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
 PID = "doi:10.70122/XXX/XXXXX"
 
-dvuploader = DVUploader(files=files)
+dvuploader = dv.DVUploader(files=files)
 dvuploader.upload(
     api_token=API_TOKEN,
     dataverse_url=DV_URL,
     persistent_id=PID,
+    n_parallel_uploads=2, # Whatever your instance can handle
 )
 ```
 
@@ -109,7 +116,3 @@ The `config` file can then be used as follows:
 ```bash
 dvuploader --config-path config.yml
 ```
-
-#### CLI Binaries
-
-DVUploader ships with binaries for Linux, MacOS and Windows. You can download the binaries from the `bin` [directory](./bin) and use them in a similar fashion as described above.
