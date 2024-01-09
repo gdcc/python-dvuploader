@@ -3,11 +3,10 @@ from urllib.parse import urljoin
 import requests
 import os
 import rich
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel
-from dotted_dict import DottedDict
-from rich.progress import Progress
+from rich.progress import Progress, TaskID
 from rich.table import Table
 from rich.console import Console
 
@@ -54,6 +53,12 @@ class DVUploader(BaseModel):
         Returns:
             None
         """
+        rich.print("\n")
+
+        # Validate and hash files
+        progress = Progress()
+        with progress:
+            asyncio.run(self._validate_and_hash_files(progress=progress))
 
         # Check for duplicates
         self._check_duplicates(
@@ -115,6 +120,38 @@ class DVUploader(BaseModel):
                 )
 
         print("\n🎉 Done!\n")
+
+    async def _validate_and_hash_files(
+        self,
+        progress: Progress,
+    ):
+        """
+        Validates and hashes the files to be uploaded.
+
+        Returns:
+            None
+        """
+
+        task = progress.add_task(
+            "[italic white]📝 Preparing upload",
+            total=len(self.files),
+        )
+
+        tasks = [
+            self._validate_and_hash_file(
+                file=file,
+                progress=progress,
+                task=task,
+            )
+            for file in self.files
+        ]
+
+        await asyncio.gather(*tasks)
+
+    @staticmethod
+    async def _validate_and_hash_file(file: File, progress: Progress, task: TaskID):
+        file.extract_filename_hash_file()
+        progress.update(task, advance=1)
 
     def _check_duplicates(
         self,
@@ -179,7 +216,7 @@ class DVUploader(BaseModel):
     @staticmethod
     def _get_file_id(
         file: File,
-        ds_files: List[DottedDict],
+        ds_files: List[Dict],
     ) -> Optional[str]:
         """
         Get the file ID for a given file in a dataset.
@@ -198,14 +235,14 @@ class DVUploader(BaseModel):
 
         # Find the file that matches label and directoryLabel
         for ds_file in ds_files:
-            dspath = os.path.join(ds_file.get("directoryLabel", ""), ds_file.label)
+            dspath = os.path.join(ds_file.get("directoryLabel", ""), ds_file["label"])
             fpath = os.path.join(file.directoryLabel, file.fileName)  # type: ignore
 
             if dspath == fpath:
-                return ds_file.dataFile.id
+                return ds_file["dataFile"]["id"]
 
     @staticmethod
-    def _check_hashes(file: File, dsFile: DottedDict):
+    def _check_hashes(file: File, dsFile: Dict):
         """
         Checks if a file has the same checksum as a file in the dataset.
 
@@ -220,7 +257,7 @@ class DVUploader(BaseModel):
         if not file.checksum:
             return False
 
-        hash_algo, hash_value = tuple(dsFile.dataFile.checksum.values())
+        hash_algo, hash_value = tuple(dsFile["dataFile"]["checksum"].values())
 
         return file.checksum.value == hash_value and file.checksum.type == hash_algo
 
