@@ -3,11 +3,22 @@ from enum import Enum
 import os
 from typing import Callable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+from enum import Enum
+import hashlib
 
 
 class ChecksumTypes(Enum):
-    """Enum class representing different types of checksums."""
+    """Enum class representing different types of checksums.
+
+    Attributes:
+        SHA1: Represents the SHA-1 checksum algorithm.
+        MD5: Represents the MD5 checksum algorithm.
+        SHA256: Represents the SHA-256 checksum algorithm.
+        SHA512: Represents the SHA-512 checksum algorithm.
+    """
 
     SHA1 = ("SHA-1", hashlib.sha1)
     MD5 = ("MD5", hashlib.md5)
@@ -23,8 +34,7 @@ class Checksum(BaseModel):
         value (str): The value of the checksum.
     """
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
     type: str = Field(..., alias="@type")
     value: str = Field(..., alias="@value")
@@ -62,7 +72,6 @@ class Checksum(BaseModel):
         Returns:
             str: A string representing the checksum of the file.
         """
-
         m = hash_fun()
         with open(fpath, "rb") as f:
             while True:
