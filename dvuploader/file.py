@@ -2,6 +2,7 @@ import os
 from typing import List, Optional
 
 from pydantic import BaseModel, Field, model_validator
+import rich
 
 from dvuploader.checksum import Checksum, ChecksumTypes
 
@@ -43,8 +44,7 @@ class File(BaseModel):
     to_replace: bool = False
     file_id: Optional[str] = None
 
-    @model_validator(mode="after")
-    def _extract_filename_hash_file(self):
+    def extract_filename_hash_file(self):
         """
         Extracts the filename and calculates the hash of the file.
 
