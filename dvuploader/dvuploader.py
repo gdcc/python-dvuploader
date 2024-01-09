@@ -1,21 +1,23 @@
-import grequests
+import asyncio
+from urllib.parse import urljoin
 import requests
 import os
-from typing import Dict, List, Optional
+import rich
+from typing import List, Optional
 
 from pydantic import BaseModel
-from joblib import Parallel, delayed
 from dotted_dict import DottedDict
+from rich.progress import Progress
+from rich.table import Table
+from rich.console import Console
 
 from dvuploader.directupload import (
     TICKET_ENDPOINT,
-    _abort_upload,
-    _validate_ticket_response,
     direct_upload,
 )
 from dvuploader.file import File
 from dvuploader.nativeupload import native_upload
-from dvuploader.utils import build_url, retrieve_dataset_files
+from dvuploader.utils import build_url, retrieve_dataset_files, setup_pbar
 
 
 class DVUploader(BaseModel):
@@ -38,7 +40,6 @@ class DVUploader(BaseModel):
         persistent_id: str,
         dataverse_url: str,
         api_token: str,
-        n_jobs: int = -1,
         n_parallel_uploads: int = 1,
     ) -> None:
         """
@@ -48,7 +49,6 @@ class DVUploader(BaseModel):
             persistent_id (str): The persistent identifier of the Dataverse dataset.
             dataverse_url (str): The URL of the Dataverse repository.
             api_token (str): The API token for the Dataverse repository.
-            n_jobs (int): The number of parallel jobs to run. Defaults to -1.
             n_parallel_uploads (int): The number of parallel uploads to execute. In the case of direct upload, this restricts the amount of parallel chunks per upload. Please use n_jobs to control parallel files.
 
         Returns:
@@ -66,11 +66,11 @@ class DVUploader(BaseModel):
         files = sorted(
             self.files,
             key=lambda x: os.path.getsize(x.filepath),
-            reverse=True,
+            reverse=False,
         )
 
         if not self.files:
-            print("\n❌ No files to upload\n")
+            rich.print("\n[bold italic white]❌ No files to upload\n")
             return
 
         # Check if direct upload is supported
@@ -79,29 +79,42 @@ class DVUploader(BaseModel):
             api_token=api_token,
             persistent_id=persistent_id,
         )
-        print("\n⚠️  Direct upload not supported. Falling back to Native API.")
-
-        print(f"\n🚀 Uploading files")
 
         if not has_direct_upload:
-            self._execute_native_uploads(
-                files=files,
-                dataverse_url=dataverse_url,
-                api_token=api_token,
-                persistent_id=persistent_id,
-                n_parallel_uploads=n_parallel_uploads,
-            )
-        else:
-            self._parallel_direct_upload(
-                files=files,
-                dataverse_url=dataverse_url,
-                api_token=api_token,
-                persistent_id=persistent_id,
-                n_jobs=n_jobs,
-                n_parallel_uploads=n_parallel_uploads,
-            )
+            print("\n⚠️  Direct upload not supported. Falling back to Native API.")
 
-        print("🎉 Done!\n")
+        rich.print(f"\n[bold italic white]🚀 Uploading files")
+
+        progress, pbars = self.setup_progress_bars(files=files)
+
+        if not has_direct_upload:
+            with progress:
+                asyncio.run(
+                    native_upload(
+                        files=files,
+                        dataverse_url=dataverse_url,
+                        api_token=api_token,
+                        persistent_id=persistent_id,
+                        n_parallel_uploads=n_parallel_uploads,
+                        progress=progress,
+                        pbars=pbars,
+                    )
+                )
+        else:
+            with progress:
+                asyncio.run(
+                    direct_upload(
+                        files=files,
+                        dataverse_url=dataverse_url,
+                        api_token=api_token,
+                        persistent_id=persistent_id,
+                        pbars=pbars,
+                        progress=progress,
+                        n_parallel_uploads=n_parallel_uploads,
+                    )
+                )
+
+        print("\n🎉 Done!\n")
 
     def _check_duplicates(
         self,
@@ -126,7 +139,15 @@ class DVUploader(BaseModel):
             api_token=api_token,
         )
 
-        print("\n🔎 Checking dataset files")
+        print("\n")
+
+        table = Table(
+            title="[bold white]🔎 Checking dataset files",
+            title_justify="left",
+        )
+        table.add_column("File", style="cyan", no_wrap=True)
+        table.add_column("Status")
+        table.add_column("Action")
 
         to_remove = []
 
@@ -136,12 +157,14 @@ class DVUploader(BaseModel):
             )
 
             if has_same_hash and file.checksum:
-                print(
-                    f"├── File '{file.fileName}' already exists with same {file.checksum.type} hash - Skipping upload."
+                table.add_row(
+                    file.fileName, "[bright_black]Same hash", "[bright_black]Skip"
                 )
                 to_remove.append(file)
             else:
-                print(f"├── File '{file.fileName}' is new - Uploading.")
+                table.add_row(
+                    file.fileName, "[spring_green3]New", "[spring_green3]Upload"
+                )
 
                 # If present in dataset, replace file
                 file.file_id = self._get_file_id(file, ds_files)
@@ -150,7 +173,8 @@ class DVUploader(BaseModel):
         for file in to_remove:
             self.files.remove(file)
 
-        print("🎉 Done")
+        console = Console()
+        console.print(table)
 
     @staticmethod
     def _get_file_id(
@@ -209,110 +233,35 @@ class DVUploader(BaseModel):
         """Checks if the response from the ticket request contains a direct upload URL"""
 
         query = build_url(
-            endpoint=TICKET_ENDPOINT,
-            dataverse_url=dataverse_url,
+            endpoint=urljoin(dataverse_url, TICKET_ENDPOINT),
             key=api_token,
             persistentId=persistent_id,
             size=1024,
         )
 
         # Send HTTP request
-        response = requests.get(query).json()
-        expected_error = "Direct upload not supported for files in this dataset"
+        response = requests.get(query)
 
-        if "message" in response and expected_error in response["message"]:
+        if response.status_code == 404:
             return False
+        else:
+            return True
 
-        # Abort test upload for now, if direct upload is supported
-        data = DottedDict(response.json()["data"])
-        _validate_ticket_response(data)
-        _abort_upload(
-            data.abort,
-            dataverse_url,
-            api_token,
-        )
-
-        return True
-
-    @staticmethod
-    def _execute_native_uploads(
-        files: List[File],
-        dataverse_url: str,
-        api_token: str,
-        persistent_id: str,
-        n_parallel_uploads: int,
-    ):
+    def setup_progress_bars(self, files: List[File]):
         """
-        Executes native uploads for the given files in parallel.
-
-        Args:
-            files (List[File]): The list of File objects to be uploaded.
-            dataverse_url (str): The URL of the Dataverse repository.
-            api_token (str): The API token for the Dataverse repository.
-            persistent_id (str): The persistent identifier of the Dataverse dataset.
-            n_parallel_uploads (int): The number of parallel uploads to execute.
+        Sets up progress bars for each file in the uploader.
 
         Returns:
-            List[requests.Response]: The list of responses for each file upload.
+            A list of progress bars, one for each file in the uploader.
         """
 
+        progress = Progress()
         tasks = [
-            native_upload(
-                file=file,
-                dataverse_url=dataverse_url,
-                api_token=api_token,
-                persistent_id=persistent_id,
-                position=position,
+            setup_pbar(
+                fpath=file.filepath,
+                progress=progress,
             )
-            for position, file in enumerate(files)
+            for file in files
         ]
 
-        # Execute tasks
-        responses = grequests.map(tasks, size=n_parallel_uploads)
-
-        if not all(map(lambda x: x.status_code == 200, responses)):
-            errors = "\n".join(
-                ["\n\n❌ Failed to upload files:"]
-                + [
-                    f"├── File '{file.fileName}' could not be uploaded: {response.status_code} {response.json()['message']}"
-                    for file, response in zip(files, responses)
-                    if response.status_code != 200
-                ]
-            )
-
-            print(errors, "\n")
-
-    @staticmethod
-    def _parallel_direct_upload(
-        files: List[File],
-        dataverse_url: str,
-        api_token: str,
-        persistent_id: str,
-        n_parallel_uploads: int,
-        n_jobs: int = -1,
-    ) -> None:
-        """
-        Perform parallel direct upload of files to the specified Dataverse repository.
-
-        Args:
-            files (List[File]): A list of File objects to be uploaded.
-            dataverse_url (str): The URL of the Dataverse repository.
-            api_token (str): The API token for the Dataverse repository.
-            persistent_id (str): The persistent identifier of the Dataverse dataset.
-            n_jobs (int): The number of parallel jobs to run. Defaults to -1.
-
-        Returns:
-            None
-        """
-
-        Parallel(n_jobs=n_jobs, backend="threading")(
-            delayed(direct_upload)(
-                file=file,
-                dataverse_url=dataverse_url,
-                api_token=api_token,
-                persistent_id=persistent_id,
-                position=position,
-                n_parallel_uploads=n_parallel_uploads,
-            )
-            for position, file in enumerate(files)
-        )
+        return progress, tasks
