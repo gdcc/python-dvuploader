@@ -1,10 +1,15 @@
 import asyncio
 import json
 import os
-from typing import List
+import tempfile
+from typing import List, Tuple
+import aiofiles
 import aiohttp
 
+from rich.progress import Progress, TaskID
+
 from dvuploader.file import File
+from dvuploader.packaging import distribute_files, zip_files
 from dvuploader.utils import build_url
 
 MAX_RETRIES = os.environ.get("DVUPLOADER_MAX_RETRIES", 15)
@@ -37,34 +42,104 @@ async def native_upload(
         List[requests.Response]: The list of responses for each file upload.
     """
 
+    _reset_progress(pbars, progress)
+
     session_params = {
         "base_url": dataverse_url,
         "headers": {"X-Dataverse-key": api_token},
         "connector": aiohttp.TCPConnector(
             limit=n_parallel_uploads,
-            force_close=True,
         ),
     }
 
     async with aiohttp.ClientSession(**session_params) as session:
-        tasks = [
-            _single_native_upload(
-                session=session,
-                file=file,
-                persistent_id=persistent_id,
-                pbar=pbar,  # type: ignore
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            packages = distribute_files(files)
+            packaged_files = _zip_packages(
+                packages=packages,
+                tmp_dir=tmp_dir,
                 progress=progress,
             )
-            for pbar, file in zip(pbars, files)
-        ]
 
-        responses = await asyncio.gather(*tasks)
+            tasks = [
+                _single_native_upload(
+                    session=session,
+                    file=file,
+                    persistent_id=persistent_id,
+                    pbar=pbar,  # type: ignore
+                    progress=progress,
+                )
+                for pbar, file in packaged_files
+            ]
+
+            responses = await asyncio.gather(*tasks)
 
     for (status, response), file in zip(responses, files):
         if status == 200:
             continue
 
         print(f"❌ Failed to upload file '{file.fileName}': {response['message']}")
+
+
+def _zip_packages(
+    packages: List[Tuple[int, List[File]]],
+    tmp_dir: str,
+    progress: Progress,
+) -> List[Tuple[TaskID, File]]:
+    """
+    Zips the given packages into zip files.
+
+    Args:
+        packages (List[Tuple[int, List[File]]]): The packages to be zipped.
+        tmp_dir (str): The temporary directory to store the zip files in.
+
+    Returns:
+        List[File, TaskID]: The list of zip files.
+    """
+
+    files = []
+
+    for index, package in packages:
+        if len(package) == 1:
+            file = package[0]
+        else:
+            file = File(
+                filepath=zip_files(
+                    files=package,
+                    tmp_dir=tmp_dir,
+                    index=index,
+                ),
+            )
+
+            file.extract_filename_hash_file()
+            file.mimeType = "application/zip"
+
+        pbar = progress.add_task(
+            file.fileName,  # type: ignore
+            total=os.path.getsize(file.filepath),
+        )
+
+        files.append((pbar, file))
+
+    return files
+
+
+def _reset_progress(
+    pbars: List[TaskID],
+    progress: Progress,
+):
+    """
+    Resets the progress bars to zero.
+
+    Args:
+        pbars: The progress bars to reset.
+
+    Returns:
+        None
+    """
+
+    for pbar in pbars:
+        progress.remove_task(pbar)
 
 
 async def _single_native_upload(
@@ -100,7 +175,7 @@ async def _single_native_upload(
 
     json_data = {
         "description": file.description,
-        "forceReplace": "true",
+        "forceReplace": True,
         "directoryLabel": file.directoryLabel,
         "categories": file.categories,
         "restrict": file.restrict,
@@ -112,7 +187,13 @@ async def _single_native_upload(
             json_part = writer.append(json.dumps(json_data))
             json_part.set_content_disposition("form-data", name="jsonData")
 
-            file_part = writer.append(open(file.filepath, "rb"))
+            file_part = writer.append(
+                file_sender(
+                    file_name=file.filepath,
+                    progress=progress,
+                    pbar=pbar,
+                )
+            )
             file_part.set_content_disposition(
                 "form-data",
                 name="file",
@@ -136,3 +217,30 @@ async def _single_native_upload(
         await asyncio.sleep(1.0)
 
     return False, {"message": "Failed to upload file"}
+
+
+async def file_sender(
+    file_name: str,
+    progress: Progress,
+    pbar: TaskID,
+):
+    """
+    Asynchronously reads and yields chunks of a file.
+
+    Args:
+        file_name (str): The name of the file to read.
+        progress (Progress): The progress object to track the file upload progress.
+        pbar (TaskID): The ID of the progress bar associated with the file upload.
+
+    Yields:
+        bytes: The chunks of the file.
+
+    """
+    chunk_size = 64 * 1024  # 10 MB
+    async with aiofiles.open(file_name, "rb") as f:
+        chunk = await f.read(chunk_size)
+        progress.advance(pbar, advance=chunk_size)
+        while chunk:
+            yield chunk
+            chunk = await f.read(chunk_size)
+            progress.advance(pbar, advance=chunk_size)
