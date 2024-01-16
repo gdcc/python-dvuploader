@@ -53,12 +53,8 @@ class DVUploader(BaseModel):
         Returns:
             None
         """
-        rich.print("\n")
-
         # Validate and hash files
-        progress = Progress()
-        with progress:
-            asyncio.run(self._validate_and_hash_files(progress=progress))
+        asyncio.run(self._validate_and_hash_files())
 
         # Check for duplicates
         self._check_duplicates(
@@ -86,9 +82,11 @@ class DVUploader(BaseModel):
         )
 
         if not has_direct_upload:
-            print("\n⚠️  Direct upload not supported. Falling back to Native API.")
+            rich.print(
+                "\n[bold italic white]⚠️  Direct upload not supported. Falling back to Native API."
+            )
 
-        rich.print(f"\n[bold italic white]🚀 Uploading files")
+        rich.print(f"\n[bold italic white]🚀 Uploading files\n")
 
         progress, pbars = self.setup_progress_bars(files=files)
 
@@ -119,12 +117,9 @@ class DVUploader(BaseModel):
                     )
                 )
 
-        print("\n🎉 Done!\n")
+        rich.print("\n[bold italic white]✅ Upload complete\n")
 
-    async def _validate_and_hash_files(
-        self,
-        progress: Progress,
-    ):
+    async def _validate_and_hash_files(self):
         """
         Validates and hashes the files to be uploaded.
 
@@ -132,26 +127,15 @@ class DVUploader(BaseModel):
             None
         """
 
-        task = progress.add_task(
-            "[italic white]📝 Preparing upload",
-            total=len(self.files),
-        )
+        rich.print("\n[italic white]📝 Preparing upload\n")
 
-        tasks = [
-            self._validate_and_hash_file(
-                file=file,
-                progress=progress,
-                task=task,
-            )
-            for file in self.files
-        ]
+        tasks = [self._validate_and_hash_file(file=file) for file in self.files]
 
         await asyncio.gather(*tasks)
 
     @staticmethod
-    async def _validate_and_hash_file(file: File, progress: Progress, task: TaskID):
+    async def _validate_and_hash_file(file: File):
         file.extract_filename_hash_file()
-        progress.update(task, advance=1)
 
     def _check_duplicates(
         self,
@@ -175,8 +159,6 @@ class DVUploader(BaseModel):
             persistent_id=persistent_id,
             api_token=api_token,
         )
-
-        print("\n")
 
         table = Table(
             title="[bold white]🔎 Checking dataset files",
@@ -259,7 +241,12 @@ class DVUploader(BaseModel):
 
         hash_algo, hash_value = tuple(dsFile["dataFile"]["checksum"].values())
 
-        return file.checksum.value == hash_value and file.checksum.type == hash_algo
+        return (
+            file.checksum.value == hash_value
+            and file.checksum.type == hash_algo
+            and file.fileName == dsFile["label"]
+            and file.directoryLabel == dsFile.get("directoryLabel", "")
+        )
 
     @staticmethod
     def _has_direct_upload(
