@@ -166,7 +166,10 @@ def setup_pbar(
         int: The task ID of the progress bar.
     """
 
+    file_size = os.path.getsize(fpath)
+    fname = os.path.basename(fpath)
+
     return progress.add_task(
-        f"[pink]├── {fpath}",
-        total=os.path.getsize(fpath),
+        f"[pink]├── {fname}",
+        total=file_size,
     )
