@@ -8,6 +8,7 @@ import aiofiles
 import aiohttp
 
 from dvuploader.file import File
+from dvuploader.nativeupload import file_sender
 from dvuploader.utils import build_url
 
 TESTING = bool(os.environ.get("DVUPLOADER_TESTING", False))
@@ -43,14 +44,8 @@ async def direct_upload(
         None
     """
 
-    headers = {
-        "X-Dataverse-key": api_token,
-    }
-    params = {
-        "headers": headers,
-        "connector": aiohttp.TCPConnector(limit=n_parallel_uploads),
-    }
-    async with aiohttp.ClientSession(**params) as session:
+    connector = aiohttp.TCPConnector(limit=n_parallel_uploads)
+    async with aiohttp.ClientSession(connector=connector) as session:
         tasks = [
             _upload_to_store(
                 session=session,
@@ -72,6 +67,11 @@ async def direct_upload(
             continue
 
         print(f"❌ Failed to upload file '{file.fileName}' to the S3 storage")
+
+    headers = {
+        "X-Dataverse-key": api_token,
+        "x-amz-tagging": "dv-state=temp",
+    }
 
     connector = aiohttp.TCPConnector(limit=4)
     pbar = progress.add_task("╰── [bold white]Registering files", total=len(files))
@@ -145,6 +145,7 @@ async def _upload_to_store(
             filepath=file.filepath,
             pbar=pbar,
             progress=progress,
+            api_token=api_token,
         )
 
     else:
@@ -155,6 +156,7 @@ async def _upload_to_store(
             dataverse_url=dataverse_url,
             pbar=pbar,
             progress=progress,
+            api_token=api_token,
         )
 
     file.storageIdentifier = storage_identifier
@@ -204,6 +206,7 @@ async def _upload_singlepart(
     filepath: str,
     pbar,
     progress,
+    api_token: str,
 ) -> Tuple[bool, str]:
     """
     Uploads a single part of a file to a remote server using HTTP PUT method.
@@ -224,14 +227,24 @@ async def _upload_singlepart(
     if TESTING:
         ticket["url"] = ticket["url"].replace("localstack", "localhost", 1)
 
+    headers = {
+        "X-Dataverse-key": api_token,
+        "x-amz-tagging": "dv-state=temp",
+    }
     storage_identifier = ticket["storageIdentifier"]
     params = {
+        "headers": headers,
         "url": ticket["url"],
-        "data": open(filepath, "rb"),
+        "data": file_sender(
+            file_name=filepath,
+            progress=progress,
+            pbar=pbar,
+        ),
     }
 
     async with session.put(**params) as response:
         status = response.status == 200
+        response.raise_for_status()
 
         if status:
             progress.update(pbar, advance=os.path.getsize(filepath))
@@ -246,6 +259,7 @@ async def _upload_multipart(
     dataverse_url: str,
     pbar,
     progress,
+    api_token: str,
 ):
     """
     Uploads a file to Dataverse using multipart upload.
@@ -296,6 +310,7 @@ async def _upload_multipart(
         url=complete,
         dataverse_url=dataverse_url,
         e_tags=e_tags,
+        api_token=api_token,
     )
 
     return True, storage_identifier
@@ -400,6 +415,7 @@ async def _complete_upload(
     url: str,
     dataverse_url: str,
     e_tags: List[Optional[str]],
+    api_token: str,
 ) -> None:
     """Completes the upload by sending the E tags
 
@@ -415,7 +431,15 @@ async def _complete_upload(
 
     payload = json.dumps({str(index + 1): e_tag for index, e_tag in enumerate(e_tags)})
 
-    async with session.put(urljoin(dataverse_url, url), data=payload) as response:
+    params = {
+        "url": urljoin(dataverse_url, url),
+        "data": payload,
+        "headers": {
+            "X-Dataverse-key": api_token,
+        },
+    }
+
+    async with session.put(**params) as response:
         response.raise_for_status()
 
 
