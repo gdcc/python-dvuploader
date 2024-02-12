@@ -235,11 +235,7 @@ async def _upload_singlepart(
     params = {
         "headers": headers,
         "url": ticket["url"],
-        "data": file_sender(
-            file_name=filepath,
-            progress=progress,
-            pbar=pbar,
-        ),
+        "data": open(filepath, "rb"),
     }
 
     async with session.put(**params) as response:
