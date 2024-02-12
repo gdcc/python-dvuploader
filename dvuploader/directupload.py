@@ -12,6 +12,11 @@ from dvuploader.nativeupload import file_sender
 from dvuploader.utils import build_url
 
 TESTING = bool(os.environ.get("DVUPLOADER_TESTING", False))
+MAX_FILE_DISPLAY = int(os.environ.get("DVUPLOADER_MAX_FILE_DISPLAY", 50))
+
+assert isinstance(
+    MAX_FILE_DISPLAY, int
+), "DVUPLOADER_MAX_FILE_DISPLAY must be an integer"
 
 TICKET_ENDPOINT = "/api/datasets/:persistentId/uploadurls"
 ADD_FILE_ENDPOINT = "/api/datasets/:persistentId/addFiles"
@@ -44,6 +49,7 @@ async def direct_upload(
         None
     """
 
+    leave_bar = len(files) < MAX_FILE_DISPLAY
     connector = aiohttp.TCPConnector(limit=n_parallel_uploads)
     async with aiohttp.ClientSession(connector=connector) as session:
         tasks = [
@@ -56,6 +62,7 @@ async def direct_upload(
                 pbar=pbar,
                 progress=progress,
                 delay=0.0,
+                leave_bar=leave_bar,
             )
             for pbar, file in zip(pbars, files)
         ]
@@ -106,6 +113,7 @@ async def _upload_to_store(
     pbar,
     progress,
     delay: float,
+    leave_bar: bool,
 ):
     """
     Uploads a file to a Dataverse collection using direct upload.
@@ -119,6 +127,7 @@ async def _upload_to_store(
         pbar: The progress bar object.
         progress: The progress object.
         delay (float): The delay in seconds before starting the upload.
+        leave_bar (bool): A flag indicating whether to keep the progress bar visible after the upload is complete.
 
     Returns:
         tuple: A tuple containing the upload status (bool) and the file object.
@@ -146,6 +155,7 @@ async def _upload_to_store(
             pbar=pbar,
             progress=progress,
             api_token=api_token,
+            leave_bar=leave_bar,
         )
 
     else:
@@ -207,6 +217,7 @@ async def _upload_singlepart(
     pbar,
     progress,
     api_token: str,
+    leave_bar: bool,
 ) -> Tuple[bool, str]:
     """
     Uploads a single part of a file to a remote server using HTTP PUT method.
@@ -217,6 +228,7 @@ async def _upload_singlepart(
         filepath (str): The path to the file to be uploaded.
         pbar (tqdm): A progress bar object to track the upload progress.
         progress: The progress object used to update the progress bar.
+        leave_bar (bool): A flag indicating whether to keep the progress bar visible after the upload is complete.
 
     Returns:
         Tuple[bool, str]: A tuple containing the status of the upload (True for success, False for failure)
@@ -243,7 +255,17 @@ async def _upload_singlepart(
         response.raise_for_status()
 
         if status:
-            progress.update(pbar, advance=os.path.getsize(filepath))
+            progress.update(
+                pbar,
+                advance=os.path.getsize(filepath),
+            )
+
+            await asyncio.sleep(0.1)
+
+            progress.update(
+                pbar,
+                visible=leave_bar,
+            )
 
         return status, storage_identifier
 
