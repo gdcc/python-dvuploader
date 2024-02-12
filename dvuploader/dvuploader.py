@@ -41,6 +41,7 @@ class DVUploader(BaseModel):
         dataverse_url: str,
         api_token: str,
         n_parallel_uploads: int = 1,
+        force_native: bool = False,
     ) -> None:
         """
         Uploads the files to the specified Dataverse repository in parallel.
@@ -98,7 +99,7 @@ class DVUploader(BaseModel):
             persistent_id=persistent_id,
         )
 
-        if not has_direct_upload:
+        if not has_direct_upload and not force_native:
             rich.print(
                 "\n[bold italic white]⚠️  Direct upload not supported. Falling back to Native API."
             )
@@ -107,7 +108,7 @@ class DVUploader(BaseModel):
 
         progress, pbars = self.setup_progress_bars(files=files)
 
-        if not has_direct_upload:
+        if not has_direct_upload or force_native:
             with progress:
                 asyncio.run(
                     native_upload(
