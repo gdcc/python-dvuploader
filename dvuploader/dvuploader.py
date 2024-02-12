@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from rich.progress import Progress, TaskID
 from rich.table import Table
 from rich.console import Console
+from rich.panel import Panel
 
 from dvuploader.directupload import (
     TICKET_ENDPOINT,
@@ -53,7 +54,23 @@ class DVUploader(BaseModel):
         Returns:
             None
         """
-        # Validate and hash files
+
+        print("\n")
+        info = "\n".join(
+            [
+                f"PID: [bold]{persistent_id}[/bold]",  # type: ignore
+                f"Files: {len(self.files)}",
+            ]
+        )
+
+        panel = Panel(
+            info,
+            title="[bold]DVUploader[/bold]",
+            expand=False,
+        )
+
+        rich.print(panel)
+
         asyncio.run(self._validate_and_hash_files())
 
         # Check for duplicates
@@ -127,15 +144,35 @@ class DVUploader(BaseModel):
             None
         """
 
-        rich.print("\n[italic white]📝 Preparing upload\n")
+        print("\n")
 
-        tasks = [self._validate_and_hash_file(file=file) for file in self.files]
+        progress = Progress()
+        task = progress.add_task(
+            "[bold italic white]📦 Preparing upload[/bold italic white]",
+            total=len(self.files),
+        )
+        with progress:
+            tasks = [
+                self._validate_and_hash_file(
+                    file=file,
+                    progress=progress,
+                    task_id=task,
+                )
+                for file in self.files
+            ]
 
-        await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks)
+
+        print("\n")
 
     @staticmethod
-    async def _validate_and_hash_file(file: File):
+    async def _validate_and_hash_file(
+        file: File,
+        progress: Progress,
+        task_id: TaskID,
+    ):
         file.extract_filename_hash_file()
+        progress.update(task_id, advance=1)
 
     def _check_duplicates(
         self,
