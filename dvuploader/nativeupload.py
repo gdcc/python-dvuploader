@@ -49,6 +49,7 @@ async def native_upload(
         "headers": {"X-Dataverse-key": api_token},
         "connector": aiohttp.TCPConnector(
             limit=n_parallel_uploads,
+            timeout_ceil_threshold=120,
         ),
     }
 
