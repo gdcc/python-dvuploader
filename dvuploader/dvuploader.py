@@ -59,6 +59,7 @@ class DVUploader(BaseModel):
         print("\n")
         info = "\n".join(
             [
+                f"Server: [bold]{dataverse_url}[/bold]",  # type: ignore
                 f"PID: [bold]{persistent_id}[/bold]",  # type: ignore
                 f"Files: {len(self.files)}",
             ]
@@ -207,6 +208,9 @@ class DVUploader(BaseModel):
         table.add_column("Action")
 
         to_remove = []
+        over_threshold = len(self.files) > 50
+        n_new_files = 0
+        n_skip_files = 0
 
         for file in self.files:
             has_same_hash = any(
@@ -214,11 +218,13 @@ class DVUploader(BaseModel):
             )
 
             if has_same_hash and file.checksum:
+                n_skip_files += 1
                 table.add_row(
                     file.fileName, "[bright_black]Same hash", "[bright_black]Skip"
                 )
                 to_remove.append(file)
             else:
+                n_new_files += 1
                 table.add_row(
                     file.fileName, "[spring_green3]New", "[spring_green3]Upload"
                 )
@@ -231,6 +237,14 @@ class DVUploader(BaseModel):
             self.files.remove(file)
 
         console = Console()
+
+        if over_threshold:
+            table = Table(title="[bold white]🔎 Checking dataset files")
+
+            table.add_column("New", style="spring_green3", no_wrap=True)
+            table.add_column("Skipped", style="bright_black", no_wrap=True)
+            table.add_row(str(n_new_files), str(n_skip_files))
+
         console.print(table)
 
     @staticmethod
