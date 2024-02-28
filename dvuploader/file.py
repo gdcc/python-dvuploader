@@ -34,7 +34,7 @@ class File(BaseModel):
     filepath: str = Field(..., exclude=True)
     description: str = ""
     directoryLabel: str = ""
-    mimeType: str = "text/plain"
+    mimeType: str = "application/octet-stream"
     categories: List[str] = ["DATA"]
     restrict: bool = False
     checksum_type: ChecksumTypes = Field(default=ChecksumTypes.MD5, exclude=True)
