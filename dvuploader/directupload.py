@@ -6,10 +6,8 @@ from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin
 import aiofiles
 import aiohttp
-import aiohttp_retry
 
 from dvuploader.file import File
-from dvuploader.nativeupload import file_sender
 from dvuploader.utils import build_url
 
 TESTING = bool(os.environ.get("DVUPLOADER_TESTING", False))
@@ -24,8 +22,8 @@ assert isinstance(MAX_RETRIES, int), "DVUPLOADER_MAX_RETRIES must be an integer"
 
 TICKET_ENDPOINT = "/api/datasets/:persistentId/uploadurls"
 ADD_FILE_ENDPOINT = "/api/datasets/:persistentId/addFiles"
-UPLOAD_ENDPOINT = "/api/datasets/:persistentId/add?persistentId="
-REPLACE_ENDPOINT = "/api/files/{FILE_ID}/replace"
+UPLOAD_ENDPOINT = "/api/datasets/:persistentId/addFiles?persistentId="
+REPLACE_ENDPOINT = "/api/datasets/:persistentId/replaceFiles?persistentId="
 
 
 async def direct_upload(
@@ -84,31 +82,20 @@ async def direct_upload(
         "x-amz-tagging": "dv-state=temp",
     }
 
-    connector = aiohttp.TCPConnector(limit=10, force_close=True)
-    pbar = progress.add_task("╰── [bold white]Registering files", total=len(files))
-    results = []
+    pbar = progress.add_task("╰── [bold white]Registering files", total=1)
+    connector = aiohttp.TCPConnector(limit=2)
     async with aiohttp.ClientSession(
         headers=headers,
         connector=connector,
     ) as session:
-
-        register_tasks = [
-            _add_file_to_ds(
-                session=session,
-                file=file,
-                dataverse_url=dataverse_url,
-                pid=persistent_id,
-                progress=progress,
-                pbar=pbar,
-            )
-            for file in files
-        ]
-
-        results = await asyncio.gather(*register_tasks)
-
-    for file, status in zip(files, results):
-        if status is False:
-            print(f"❌ Failed to register file '{file.fileName}' at Dataverse")
+        await _add_files_to_ds(
+            session=session,
+            files=files,
+            dataverse_url=dataverse_url,
+            pid=persistent_id,
+            progress=progress,
+            pbar=pbar,
+        )
 
 
 async def _upload_to_store(
@@ -488,14 +475,14 @@ async def _abort_upload(
         response.raise_for_status()
 
 
-async def _add_file_to_ds(
+async def _add_files_to_ds(
     session: aiohttp.ClientSession,
     dataverse_url: str,
     pid: str,
-    file: File,
+    files: List[File],
     progress,
     pbar,
-) -> bool:
+) -> None:
     """
     Adds a file to a Dataverse dataset.
 
@@ -508,38 +495,77 @@ async def _add_file_to_ds(
     Returns:
         bool: True if the file was added successfully, False otherwise.
     """
-    if not file.to_replace:
-        url = urljoin(dataverse_url, UPLOAD_ENDPOINT + pid)
-    else:
-        url = build_url(
-            dataverse_url=dataverse_url,
-            endpoint=urljoin(
-                dataverse_url,
-                REPLACE_ENDPOINT.format(FILE_ID=file.file_id),
-            ),
-        )
 
-    json_data = file.model_dump_json(
-        by_alias=True,
-        exclude={"to_replace", "file_id"},
-        indent=2,
-        exclude_none=True,
+    novel_url = urljoin(dataverse_url, UPLOAD_ENDPOINT + pid)
+    replace_url = urljoin(dataverse_url, REPLACE_ENDPOINT + pid)
+
+    novel_json_data = _prepare_registration(files, use_replace=False)
+    replace_json_data = _prepare_registration(files, use_replace=True)
+
+    await _multipart_json_data_request(
+        session=session,
+        json_data=novel_json_data,
+        url=novel_url,
     )
 
+    await _multipart_json_data_request(
+        session=session,
+        json_data=replace_json_data,
+        url=replace_url,
+    )
+
+    progress.update(pbar, advance=1)
+
+
+def _prepare_registration(files: List[File], use_replace: bool) -> str:
+    """
+    Prepares the files for registration at the Dataverse instance.
+
+    Args:
+        files (List[File]): The list of files to prepare.
+
+    Returns:
+        str: A JSON string containing the file data.
+    """
+
+    exclude = {"to_replace"} if use_replace else {"to_replace", "file_id"}
+
+    return json.dumps(
+        [
+            file.model_dump(
+                by_alias=True,
+                exclude=exclude,
+                exclude_none=True,
+            )
+            for file in files
+            if file.to_replace is use_replace
+        ],
+        indent=2,
+    )
+
+
+async def _multipart_json_data_request(
+    json_data: str,
+    url: str,
+    session: aiohttp.ClientSession,
+):
+    """
+    Sends a multipart/form-data POST request with JSON data to the specified URL using the provided session.
+
+    Args:
+        json_data (str): The JSON data to be sent in the request body.
+        url (str): The URL to send the request to.
+        session (aiohttp.ClientSession): The aiohttp client session to use for the request.
+
+    Raises:
+        aiohttp.ClientResponseError: If the response status code is not successful.
+
+    Returns:
+        None
+    """
     with aiohttp.MultipartWriter("form-data") as writer:
         json_part = writer.append(json_data)
         json_part.set_content_disposition("form-data", name="jsonData")
 
-        retry_options = aiohttp_retry.RandomRetry(attempts=MAX_RETRIES, statuses={400})
-        retry_client = aiohttp_retry.RetryClient(
-            client_session=session,
-            retry_options=retry_options,
-        )
-
-        async with retry_client.post(url, data=writer) as response:
-            if response.status == 200:
-                progress.update(pbar, advance=1)
-                return True
-
-        await retry_client.close()
-        return False
+        async with session.post(url, data=writer) as response:
+            response.raise_for_status()
