@@ -1,7 +1,7 @@
 import os
-from typing import List, Optional
+from typing import List, Optional, Union
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 import rich
 
 from dvuploader.checksum import Checksum, ChecksumTypes
@@ -31,6 +31,8 @@ class File(BaseModel):
 
     """
 
+    model_config: ConfigDict = ConfigDict(populate_by_alias=True)
+
     filepath: str = Field(..., exclude=True)
     description: str = ""
     directoryLabel: str = ""
@@ -42,7 +44,7 @@ class File(BaseModel):
     fileName: Optional[str] = None
     checksum: Optional[Checksum] = None
     to_replace: bool = False
-    file_id: Optional[str] = None
+    file_id: Optional[Union[str, int]] = Field(default=None, alias="fileToReplaceId")
 
     def extract_filename_hash_file(self):
         """

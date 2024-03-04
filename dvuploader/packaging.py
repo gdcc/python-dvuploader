@@ -6,7 +6,7 @@ from typing import List, Tuple
 MAXIMUM_PACKAGE_SIZE = int(
     os.environ.get(
         "DVUPLOADER_MAX_PKG_SIZE",
-        1024**3,  # 1 GB
+        2 * 1024**3,  # 2 GB
     )
 )
 
