@@ -18,8 +18,6 @@ jobs:
       - name: Run Dataverse Action
         id: dataverse
         uses: gdcc/dataverse-action@main
-        with:
-          image_tag: alpha
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
         with:
