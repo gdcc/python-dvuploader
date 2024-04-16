@@ -1,7 +1,7 @@
 import hashlib
 from enum import Enum
 import os
-from typing import Callable
+from typing import IO, Callable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -34,7 +34,10 @@ class Checksum(BaseModel):
         value (str): The value of the checksum.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        populate_by_name=True,
+    )
 
     type: str = Field(..., alias="@type")
     value: str = Field(..., alias="@value")
@@ -42,14 +45,14 @@ class Checksum(BaseModel):
     @classmethod
     def from_file(
         cls,
-        fpath: str,
+        handler: IO,
         hash_fun: Callable,
         hash_algo: str,
     ) -> "Checksum":
         """Takes a file path and returns a checksum object.
 
         Args:
-            fpath (str): The file path to generate the checksum for.
+            handler (IO): The file handler to generate the checksum for.
             hash_fun (Callable): The hash function to use for generating the checksum.
             hash_algo (str): The hash algorithm to use for generating the checksum.
 
@@ -57,11 +60,15 @@ class Checksum(BaseModel):
             Checksum: A Checksum object with type and value fields.
         """
 
-        value = cls._chunk_checksum(fpath=fpath, hash_fun=hash_fun)
+        value = cls._chunk_checksum(handler=handler, hash_fun=hash_fun)
         return cls(type=hash_algo, value=value)  # type: ignore
 
     @staticmethod
-    def _chunk_checksum(fpath: str, hash_fun: Callable, blocksize=2**20) -> str:
+    def _chunk_checksum(
+        handler: IO,
+        hash_fun: Callable,
+        blocksize=2**20
+    ) -> str:
         """Chunks a file and returns a checksum.
 
         Args:
@@ -73,10 +80,16 @@ class Checksum(BaseModel):
             str: A string representing the checksum of the file.
         """
         m = hash_fun()
-        with open(fpath, "rb") as f:
-            while True:
-                buf = f.read(blocksize)
-                if not buf:
-                    break
-                m.update(buf)
+        while True:
+            buf = handler.read(blocksize)
+
+            if not isinstance(buf, bytes):
+                buf = buf.encode()
+
+            if not buf:
+                break
+            m.update(buf)
+
+        handler.seek(0)
+
         return m.hexdigest()
