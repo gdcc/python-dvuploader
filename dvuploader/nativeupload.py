@@ -79,7 +79,7 @@ async def native_upload(
         if status == 200:
             continue
 
-        print(f"❌ Failed to upload file '{file.fileName}': {response['message']}")
+        print(f"❌ Failed to upload file '{file.file_name}': {response['message']}")
 
 
 def _zip_packages(
@@ -112,12 +112,12 @@ def _zip_packages(
                 ),
             )
 
-            file.extract_filename_hash_file()
+            file.extract_file_name_hash_file()
             file.mimeType = "application/zip"
 
         pbar = progress.add_task(
-            file.fileName,  # type: ignore
-            total=os.path.getsize(file.filepath),
+            file.file_name,  # type: ignore
+            total=file._size,
         )
 
         files.append((pbar, file))
@@ -177,42 +177,28 @@ async def _single_native_upload(
     json_data = {
         "description": file.description,
         "forceReplace": True,
-        "directoryLabel": file.directoryLabel,
+        "directory_label": file.directory_label,
         "categories": file.categories,
         "restrict": file.restrict,
         "forceReplace": True,
     }
 
     for _ in range(MAX_RETRIES):
-        with aiohttp.MultipartWriter("form-data") as writer:
-            json_part = writer.append(json.dumps(json_data))
-            json_part.set_content_disposition("form-data", name="jsonData")
 
-            file_part = writer.append(
-                file_sender(
-                    file_name=file.filepath,
-                    progress=progress,
-                    pbar=pbar,
-                )
-            )
-            file_part.set_content_disposition(
-                "form-data",
-                name="file",
-                filename=file.fileName,
-            )
-            async with session.post(endpoint, data=writer) as response:
-                status = response.status
+        formdata = aiohttp.FormData()
+        formdata.add_field("jsonData", json.dumps(json_data), content_type="application/json")
+        formdata.add_field("file", file.handler, filename=file.file_name)
 
-                if status == 200:
-                    progress.update(
-                        pbar,
-                        advance=os.path.getsize(file.filepath),
-                    )
+        async with session.post(endpoint, data=formdata) as response:
+            status = response.status
 
-                    # Wait to avoid rate limiting
-                    await asyncio.sleep(0.7)
+            if status == 200:
+                progress.update(pbar, advance=file._size, complete=file._size)
 
-                    return status, await response.json()
+                # Wait to avoid rate limiting
+                await asyncio.sleep(0.7)
+
+                return status, await response.json()
 
         # Wait to avoid rate limiting
         await asyncio.sleep(1.0)
@@ -220,8 +206,8 @@ async def _single_native_upload(
     return False, {"message": "Failed to upload file"}
 
 
-async def file_sender(
-    file_name: str,
+def file_sender(
+    file: File,
     progress: Progress,
     pbar: TaskID,
 ):
@@ -237,11 +223,14 @@ async def file_sender(
         bytes: The chunks of the file.
 
     """
+
+    assert file.handler is not None, "File handler is not set."
+
     chunk_size = 64 * 1024  # 10 MB
-    async with aiofiles.open(file_name, "rb") as f:
-        chunk = await f.read(chunk_size)
+    chunk = file.handler.read(chunk_size)
+    progress.advance(pbar, advance=chunk_size)
+
+    while chunk:
+        yield chunk
+        chunk = file.handler.read(chunk_size)
         progress.advance(pbar, advance=chunk_size)
-        while chunk:
-            yield chunk
-            chunk = await f.read(chunk_size)
-            progress.advance(pbar, advance=chunk_size)
