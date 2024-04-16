@@ -27,23 +27,22 @@ def distribute_files(dv_files: List["File"]):  # type: ignore
     package_index = 0
     current_size = 0
     for file in dv_files:
-        file_size = os.path.getsize(file.filepath)
 
-        if file_size > MAXIMUM_PACKAGE_SIZE:
+        if file._size > MAXIMUM_PACKAGE_SIZE:
             current_package, current_size, package_index = _append_and_reset(
                 (package_index, [file]),
                 packages,
             )
             continue
 
-        if current_size + file_size > MAXIMUM_PACKAGE_SIZE:
+        if current_size + file._size > MAXIMUM_PACKAGE_SIZE:
             current_package, current_size, package_index = _append_and_reset(
                 (package_index, current_package),
                 packages,
             )
 
         current_package.append(file)
-        current_size += os.path.getsize(file.filepath)
+        current_size += file._size
     else:
         if current_package:
             _append_and_reset(
@@ -91,9 +90,9 @@ def zip_files(
 
     with zipfile.ZipFile(path, "w") as zip_file:
         for file in files:
-            zip_file.write(
-                file.filepath,
-                arcname=_create_arcname(file),
+            zip_file.writestr(
+                data=file.handler.read(),
+                zinfo_or_arcname=_create_arcname(file),
             )
 
     return path
@@ -109,7 +108,7 @@ def _create_arcname(file: "File"):  # type: ignore
     Returns:
         str: The arcname for the given file.
     """
-    if file.directoryLabel is not None:
-        return os.path.join(file.directoryLabel, file.fileName)  # type: ignore
+    if file.directory_label is not None:
+        return os.path.join(file.directory_label, file.file_name)  # type: ignore
     else:
-        return file.fileName
+        return file.file_name
