@@ -19,7 +19,6 @@ from dvuploader.file import File
 from dvuploader.nativeupload import native_upload
 from dvuploader.utils import build_url, retrieve_dataset_files, setup_pbar
 
-
 class DVUploader(BaseModel):
     """
     A class for uploading files to a Dataverse repository.
@@ -34,6 +33,7 @@ class DVUploader(BaseModel):
     """
 
     files: List[File]
+    verbose: bool = True
 
     def upload(
         self,
@@ -56,7 +56,9 @@ class DVUploader(BaseModel):
             None
         """
 
-        print("\n")
+        if self.verbose:
+            print("\n")
+
         info = "\n".join(
             [
                 f"Server: [bold]{dataverse_url}[/bold]",  # type: ignore
@@ -71,9 +73,10 @@ class DVUploader(BaseModel):
             expand=False,
         )
 
-        rich.print(panel)
+        if self.verbose:
+            rich.print(panel)
 
-        asyncio.run(self._validate_and_hash_files())
+        asyncio.run(self._validate_and_hash_files(verbose=self.verbose))
 
         # Check for duplicates
         self._check_duplicates(
@@ -85,7 +88,7 @@ class DVUploader(BaseModel):
         # Sort files by size
         files = sorted(
             self.files,
-            key=lambda x: os.path.getsize(x.filepath),
+            key=lambda x: x._size,
             reverse=False,
         )
 
@@ -100,7 +103,7 @@ class DVUploader(BaseModel):
             persistent_id=persistent_id,
         )
 
-        if not has_direct_upload and not force_native:
+        if not has_direct_upload and not force_native and self.verbose:
             rich.print(
                 "\n[bold italic white]⚠️  Direct upload not supported. Falling back to Native API."
             )
@@ -136,9 +139,10 @@ class DVUploader(BaseModel):
                     )
                 )
 
-        rich.print("\n[bold italic white]✅ Upload complete\n")
+        if self.verbose:
+            rich.print("\n[bold italic white]✅ Upload complete\n")
 
-    async def _validate_and_hash_files(self):
+    async def _validate_and_hash_files(self, verbose: bool):
         """
         Validates and hashes the files to be uploaded.
 
@@ -146,19 +150,34 @@ class DVUploader(BaseModel):
             None
         """
 
+        if not verbose:
+            tasks = [
+                self._validate_and_hash_file(
+                    file=file,
+                    verbose=self.verbose
+                )
+                for file in self.files
+            ]
+
+            await asyncio.gather(*tasks)
+            return
+
         print("\n")
 
         progress = Progress()
         task = progress.add_task(
-            "[bold italic white]📦 Preparing upload[/bold italic white]",
+            "[bold italic white]\n📦 Preparing upload[/bold italic white]",
             total=len(self.files),
         )
+
         with progress:
+
             tasks = [
                 self._validate_and_hash_file(
                     file=file,
                     progress=progress,
                     task_id=task,
+                    verbose=self.verbose
                 )
                 for file in self.files
             ]
@@ -170,11 +189,14 @@ class DVUploader(BaseModel):
     @staticmethod
     async def _validate_and_hash_file(
         file: File,
-        progress: Progress,
-        task_id: TaskID,
+        verbose: bool,
+        progress: Optional[Progress] = None,
+        task_id: Optional[TaskID] = None,
     ):
-        file.extract_filename_hash_file()
-        progress.update(task_id, advance=1)
+        file.extract_file_name_hash_file()
+
+        if verbose:
+            progress.update(task_id, advance=1) # type: ignore
 
     def _check_duplicates(
         self,
@@ -220,13 +242,13 @@ class DVUploader(BaseModel):
             if has_same_hash and file.checksum:
                 n_skip_files += 1
                 table.add_row(
-                    file.fileName, "[bright_black]Same hash", "[bright_black]Skip"
+                    file.file_name, "[bright_black]Same hash", "[bright_black]Skip"
                 )
                 to_remove.append(file)
             else:
                 n_new_files += 1
                 table.add_row(
-                    file.fileName, "[spring_green3]New", "[spring_green3]Upload"
+                    file.file_name, "[spring_green3]New", "[spring_green3]Upload"
                 )
 
                 # If present in dataset, replace file
@@ -245,7 +267,8 @@ class DVUploader(BaseModel):
             table.add_column("Skipped", style="bright_black", no_wrap=True)
             table.add_row(str(n_new_files), str(n_skip_files))
 
-        console.print(table)
+        if self.verbose:
+            console.print(table)
 
     @staticmethod
     def _get_file_id(
@@ -267,10 +290,10 @@ class DVUploader(BaseModel):
             ValueError: If the file cannot be found in the dataset.
         """
 
-        # Find the file that matches label and directoryLabel
+        # Find the file that matches label and directory_label
         for ds_file in ds_files:
-            dspath = os.path.join(ds_file.get("directoryLabel", ""), ds_file["label"])
-            fpath = os.path.join(file.directoryLabel, file.fileName)  # type: ignore
+            dspath = os.path.join(ds_file.get("directory_label", ""), ds_file["label"])
+            fpath = os.path.join(file.directory_label, file.file_name)  # type: ignore
 
             if dspath == fpath:
                 return ds_file["dataFile"]["id"]
@@ -296,8 +319,8 @@ class DVUploader(BaseModel):
         return (
             file.checksum.value == hash_value
             and file.checksum.type == hash_algo
-            and file.fileName == dsFile["label"]
-            and file.directoryLabel == dsFile.get("directoryLabel", "")
+            and file.file_name == dsFile["label"]
+            and file.directory_label == dsFile.get("directory_label", "")
         )
 
     @staticmethod
@@ -334,7 +357,7 @@ class DVUploader(BaseModel):
         progress = Progress()
         tasks = [
             setup_pbar(
-                fpath=file.filepath,
+                file=file,
                 progress=progress,
             )
             for file in files
