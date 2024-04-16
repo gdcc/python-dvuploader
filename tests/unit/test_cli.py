@@ -14,7 +14,7 @@ class TestParseYAMLConfig:
 
         # Act
         cli_input = _parse_yaml_config(fpath)
-        [file.extract_filename_hash_file() for file in cli_input.files]
+        [file.extract_file_name_hash_file() for file in cli_input.files]
 
         # Assert
         expected_files = [
@@ -28,7 +28,7 @@ class TestParseYAMLConfig:
 
         assert len(cli_input.files) == 2
         assert sorted(
-            [(file.directoryLabel, file.fileName) for file in cli_input.files]
+            [(file.directory_label, file.file_name) for file in cli_input.files]
         ) == sorted(expected_files)
 
 
@@ -74,7 +74,7 @@ class TestCLIMain:
                 "files": [
                     {
                         "filepath": "./tests/fixtures/add_dir_files/somefile.txt",
-                        "directoryLabel": "",
+                        "directory_label": "",
                     }
                 ],
             }

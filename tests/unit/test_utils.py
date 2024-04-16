@@ -1,7 +1,9 @@
+from io import BytesIO
 import requests
 import pytest
 
 from rich.progress import Progress
+from dvuploader.file import File
 from dvuploader.utils import (
     add_directory,
     build_url,
@@ -17,7 +19,7 @@ class TestAddDirectory:
 
         # Act
         files = add_directory(directory)
-        [file.extract_filename_hash_file() for file in files]
+        [file.extract_file_name_hash_file() for file in files]
 
         # Assert
         expected_files = [
@@ -30,15 +32,15 @@ class TestAddDirectory:
 
         assert len(files) == len(expected_files), "Wrong number of files"
 
-        for directory_label, filename in expected_files:
+        for directory_label, file_name in expected_files:
             assert any(
-                file.fileName == filename for file in files
-            ), f"File {filename} not found in files"
+                file.file_name == file_name for file in files
+            ), f"File {file_name} not found in files"
 
-            file = next(filter(lambda file: file.fileName == filename, files))
+            file = next(filter(lambda file: file.file_name == file_name, files))
             assert (
-                file.directoryLabel == directory_label
-            ), f"File {filename} has wrong directory label"
+                file.directory_label == directory_label
+            ), f"File {file_name} has wrong directory label"
 
     def test_all_files_added_except_hidden_and_dunder(self):
         # Arrange
@@ -46,7 +48,7 @@ class TestAddDirectory:
 
         # Act
         files = add_directory(directory, ignore=[r"^\.", "__.*__"])
-        [file.extract_filename_hash_file() for file in files]
+        [file.extract_file_name_hash_file() for file in files]
 
         # Assert
         expected_files = [
@@ -58,15 +60,15 @@ class TestAddDirectory:
 
         assert len(files) == len(expected_files), "Wrong number of files"
 
-        for directory_label, filename in expected_files:
+        for directory_label, file_name in expected_files:
             assert any(
-                file.fileName == filename for file in files
-            ), f"File {filename} not found in files"
+                file.file_name == file_name for file in files
+            ), f"File {file_name} not found in files"
 
-            file = next(filter(lambda file: file.fileName == filename, files))
+            file = next(filter(lambda file: file.file_name == file_name, files))
             assert (
-                file.directoryLabel == directory_label
-            ), f"File {filename} has wrong directory label"
+                file.directory_label == directory_label
+            ), f"File {file_name} has wrong directory label"
 
 
 class TestBuildUrl:
@@ -150,8 +152,8 @@ class TestRetrieveDatasetFiles:
             "data": {
                 "latestVersion": {
                     "files": [
-                        {"filename": "file1.txt"},
-                        {"filename": "file2.txt"},
+                        {"file_name": "file1.txt"},
+                        {"file_name": "file2.txt"},
                     ]
                 }
             }
@@ -163,8 +165,8 @@ class TestRetrieveDatasetFiles:
 
         # Assert the result
         assert result == [
-            {"filename": "file1.txt"},
-            {"filename": "file2.txt"},
+            {"file_name": "file1.txt"},
+            {"file_name": "file2.txt"},
         ]
 
         # Assert that requests.get was called with the correct parameters
@@ -183,7 +185,7 @@ class TestRetrieveDatasetFiles:
         mock_response.json.return_value = {
             "data": {
                 "latestVersion": {
-                    "files": [{"filename": "file1.txt"}, {"filename": "file2.txt"}]
+                    "files": [{"file_name": "file1.txt"}, {"file_name": "file2.txt"}]
                 }
             }
         }
@@ -193,7 +195,7 @@ class TestRetrieveDatasetFiles:
         result = retrieve_dataset_files("http://example.com", "12345", "token")
 
         # Assert the result
-        assert result == [{"filename": "file1.txt"}, {"filename": "file2.txt"}]
+        assert result == [{"file_name": "file1.txt"}, {"file_name": "file2.txt"}]
 
     # Raise HTTPError if the request to the Dataverse repository fails.
     def test_raise_http_error(self, mocker):
@@ -208,11 +210,16 @@ class TestRetrieveDatasetFiles:
 class TestSetupPbar:
     def test_returns_progress_bar_object(self):
         # Arrange
-        fpath = "tests/fixtures/add_dir_files/somefile.txt"
+        handler = BytesIO(b"Hello, world!")
+        file = File(
+            filepath="test.txt",
+            handler=handler,
+        )
+
         progress = Progress()
 
         # Act
-        result = setup_pbar(fpath=fpath, progress=progress)
+        result = setup_pbar(file=file, progress=progress)
 
         # Assert
         assert isinstance(result, int)
