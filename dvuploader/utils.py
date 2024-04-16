@@ -72,7 +72,7 @@ def retrieve_dataset_files(
 def add_directory(
     directory: str,
     ignore: List[str] = [r"^\."],
-    directory_label: str = "",
+    rootDirectoryLabel: str = "",
 ):
     """
     Recursively adds all files in the specified directory to a list of File objects.
@@ -80,7 +80,7 @@ def add_directory(
     Args:
         directory (str): The directory path.
         ignore (List[str], optional): A list of regular expressions to ignore certain files or directories. Defaults to [r"^\."].
-        directory_label (str, optional): The label to be added to the directory path of each file. Defaults to "".
+        rootDirectoryLabel (str, optional): The label to be added to the directory path of each file. Defaults to "".
 
     Returns:
         List[File]: A list of File objects representing the files in the directory.
@@ -96,7 +96,7 @@ def add_directory(
         if any(part_is_ignored(part, ignore) for part in list(file.parts)):
             continue
 
-        directoryLabel = _truncate_path(
+        directory_label = _truncate_path(
             file.parent,
             pathlib.Path(directory),
         )
@@ -105,8 +105,8 @@ def add_directory(
             File(
                 filepath=str(file),
                 directoryLabel=os.path.join(
+                    rootDirectoryLabel,
                     directory_label,
-                    directoryLabel,
                 ),
             )
         )
@@ -152,7 +152,7 @@ def part_is_ignored(part, ignore):
 
 
 def setup_pbar(
-    fpath: str,
+    file: File,
     progress: Progress,
 ) -> int:
     """
@@ -166,10 +166,11 @@ def setup_pbar(
         int: The task ID of the progress bar.
     """
 
-    file_size = os.path.getsize(fpath)
-    fname = os.path.basename(fpath)
+    file_size = file._size
+    fname = file.file_name
 
     return progress.add_task(
         f"[pink]├── {fname}",
+        start=True,
         total=file_size,
     )
