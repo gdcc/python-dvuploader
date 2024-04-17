@@ -108,7 +108,8 @@ class DVUploader(BaseModel):
                 "\n[bold italic white]⚠️  Direct upload not supported. Falling back to Native API."
             )
 
-        rich.print(f"\n[bold italic white]🚀 Uploading files\n")
+        if self.verbose:
+            rich.print(f"\n[bold italic white]🚀 Uploading files\n")
 
         progress, pbars = self.setup_progress_bars(files=files)
 
@@ -292,7 +293,7 @@ class DVUploader(BaseModel):
 
         # Find the file that matches label and directory_label
         for ds_file in ds_files:
-            dspath = os.path.join(ds_file.get("directory_label", ""), ds_file["label"])
+            dspath = os.path.join(ds_file.get("directoryLabel", ""), ds_file["label"])
             fpath = os.path.join(file.directory_label, file.file_name)  # type: ignore
 
             if dspath == fpath:
@@ -320,7 +321,7 @@ class DVUploader(BaseModel):
             file.checksum.value == hash_value
             and file.checksum.type == hash_algo
             and file.file_name == dsFile["label"]
-            and file.directory_label == dsFile.get("directory_label", "")
+            and file.directory_label == dsFile.get("directoryLabel", "")
         )
 
     @staticmethod
