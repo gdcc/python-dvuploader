@@ -1,4 +1,5 @@
 from io import BytesIO
+import json
 import tempfile
 
 import pytest
@@ -42,16 +43,17 @@ class TestNativeUpload:
             )
 
             # Assert
-            expected_files = [
-                "small_file.txt",
-                "mid_file.txt",
-                "large_file.txt",
-            ]
             files = retrieve_dataset_files(
                 dataverse_url=BASE_URL,
                 persistent_id=pid,
                 api_token=API_TOKEN,
             )
+
+            expected_files = [
+                "small_file.txt",
+                "mid_file.txt",
+                "large_file.txt",
+            ]
 
             assert len(files) == 3
             assert sorted([file["label"] for file in files]) == sorted(expected_files)
@@ -89,16 +91,17 @@ class TestNativeUpload:
             )
 
             # Assert
-            expected_files = [
-                "small_file.txt",
-                "mid_file.txt",
-                "large_file.txt",
-            ]
             files = retrieve_dataset_files(
                 dataverse_url=BASE_URL,
                 persistent_id=pid,
                 api_token=API_TOKEN,
             )
+
+            expected_files = [
+                "small_file.txt",
+                "mid_file.txt",
+                "large_file.txt",
+            ]
 
             assert len(files) == 3
             assert sorted([file["label"] for file in files]) == sorted(expected_files)
@@ -134,10 +137,11 @@ class TestNativeUpload:
         )
 
         # Assert
-        expected_files = [
-            "file.txt",
-            "biggerfile.txt",
+        expected = [
+            ("", "biggerfile.txt"),
+            ("subdir", "file.txt"),
         ]
+
         files = retrieve_dataset_files(
             dataverse_url=BASE_URL,
             persistent_id=pid,
@@ -145,4 +149,10 @@ class TestNativeUpload:
         )
 
         assert len(files) == 2
-        assert sorted([file["label"] for file in files]) == sorted(expected_files)
+
+        for ex_dir, ex_f in expected:
+
+            file = next(file for file in files if file["label"] == ex_f)
+
+            assert file["label"] == ex_f, f"File label does not match for file {json.dumps(file)}"
+            assert file.get("directoryLabel", "") == ex_dir, f"Directory label does not match for file {json.dumps(file)}"
