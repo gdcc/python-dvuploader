@@ -177,7 +177,7 @@ async def _single_native_upload(
     json_data = {
         "description": file.description,
         "forceReplace": True,
-        "directory_label": file.directory_label,
+        "directoryLabel": file.directory_label,
         "categories": file.categories,
         "restrict": file.restrict,
         "forceReplace": True,
