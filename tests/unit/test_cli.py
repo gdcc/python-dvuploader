@@ -74,7 +74,7 @@ class TestCLIMain:
                 "files": [
                     {
                         "filepath": "./tests/fixtures/add_dir_files/somefile.txt",
-                        "directory_label": "",
+                        "directoryLabel": "",
                     }
                 ],
             }
