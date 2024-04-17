@@ -71,6 +71,7 @@ class File(BaseModel):
             self._size = os.path.getsize(self.filepath)
         else:
             self._size = len(self.handler.read())
+            self.directory_label = os.path.dirname(self.filepath)
             self.handler.seek(0)
 
         self.file_name = os.path.basename(self.filepath)
