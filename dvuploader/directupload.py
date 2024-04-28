@@ -75,7 +75,7 @@ async def direct_upload(
         if status is True:
             continue
 
-        print(f"❌ Failed to upload file '{file.fileName}' to the S3 storage")
+        print(f"❌ Failed to upload file '{file.file_name}' to the S3 storage")
 
     headers = {
         "X-Dataverse-key": api_token,
@@ -129,15 +129,11 @@ async def _upload_to_store(
 
     await asyncio.sleep(delay)
 
-    assert file.fileName is not None, "File name is None"
-    assert os.path.exists(file.filepath), f"File {file.filepath} does not exist"
-
-    file_size = os.path.getsize(file.filepath)
     ticket = await _request_ticket(
         session=session,
         dataverse_url=dataverse_url,
         api_token=api_token,
-        file_size=file_size,
+        file_size=file._size,
         persistent_id=persistent_id,
     )
 
@@ -145,7 +141,7 @@ async def _upload_to_store(
         status, storage_identifier = await _upload_singlepart(
             session=session,
             ticket=ticket,
-            filepath=file.filepath,
+            file=file,
             pbar=pbar,
             progress=progress,
             api_token=api_token,
@@ -156,7 +152,7 @@ async def _upload_to_store(
         status, storage_identifier = await _upload_multipart(
             session=session,
             response=ticket,
-            filepath=file.filepath,
+            file=file,
             dataverse_url=dataverse_url,
             pbar=pbar,
             progress=progress,
@@ -207,7 +203,7 @@ async def _request_ticket(
 async def _upload_singlepart(
     session: aiohttp.ClientSession,
     ticket: Dict,
-    filepath: str,
+    file: File,
     pbar,
     progress,
     api_token: str,
@@ -241,7 +237,7 @@ async def _upload_singlepart(
     params = {
         "headers": headers,
         "url": ticket["url"],
-        "data": open(filepath, "rb"),
+        "data": file.handler,
     }
 
     async with session.put(**params) as response:
@@ -249,13 +245,8 @@ async def _upload_singlepart(
         response.raise_for_status()
 
         if status:
-            progress.update(
-                pbar,
-                advance=os.path.getsize(filepath),
-            )
-
+            progress.update(pbar, advance=file._size)
             await asyncio.sleep(0.1)
-
             progress.update(
                 pbar,
                 visible=leave_bar,
@@ -267,7 +258,7 @@ async def _upload_singlepart(
 async def _upload_multipart(
     session: aiohttp.ClientSession,
     response: Dict,
-    filepath: str,
+    file: File,
     dataverse_url: str,
     pbar,
     progress,
@@ -279,7 +270,7 @@ async def _upload_multipart(
     Args:
         session (aiohttp.ClientSession): The aiohttp client session.
         response (Dict): The response from the Dataverse API containing the upload ticket information.
-        filepath (str): The path to the file to be uploaded.
+        file (File): The file object to be uploaded.
         dataverse_url (str): The URL of the Dataverse instance.
         pbar (tqdm): A progress bar to track the upload progress.
         progress: The progress callback function.
@@ -301,7 +292,7 @@ async def _upload_multipart(
 
     try:
         e_tags = await _chunked_upload(
-            filepath=filepath,
+            file=file,
             session=session,
             urls=urls,
             chunk_size=chunk_size,
@@ -309,11 +300,12 @@ async def _upload_multipart(
             progress=progress,
         )
     except Exception as e:
-        print(f"❌ Failed to upload file '{filepath}' to the S3 storage")
+        print(f"❌ Failed to upload file '{file.file_name}' to the S3 storage")
         await _abort_upload(
             session=session,
             url=abort,
             dataverse_url=dataverse_url,
+            api_token=api_token,
         )
         raise e
 
@@ -329,7 +321,7 @@ async def _upload_multipart(
 
 
 async def _chunked_upload(
-    filepath: str,
+    file: File,
     session: aiohttp.ClientSession,
     urls,
     chunk_size: int,
@@ -340,7 +332,7 @@ async def _chunked_upload(
     Uploads a file in chunks to multiple URLs using the provided session.
 
     Args:
-        filepath (str): The path of the file to upload.
+        file (File): The file object to upload.
         session (aiohttp.ClientSession): The aiohttp client session to use for the upload.
         urls: An iterable of URLs to upload the file chunks to.
         chunk_size (int): The size of each chunk in bytes.
@@ -351,7 +343,17 @@ async def _chunked_upload(
         List[str]: A list of ETags returned by the server for each uploaded chunk.
     """
     e_tags = []
-    async with aiofiles.open(filepath, "rb") as f:
+
+    if not os.path.exists(file.filepath):
+        raise NotImplementedError(
+            """
+
+            Multipart chunked upload is currently only supported for local files and no in-memory objects.
+            Please save the handlers content to a local file and try again.
+            """
+        )
+
+    async with aiofiles.open(file.filepath, "rb") as f:
         chunk = await f.read(chunk_size)
         e_tags.append(
             await _upload_chunk(
@@ -459,6 +461,7 @@ async def _abort_upload(
     session: aiohttp.ClientSession,
     url: str,
     dataverse_url: str,
+    api_token: str,
 ):
     """
     Aborts an ongoing upload by sending a DELETE request to the specified URL.
@@ -467,11 +470,17 @@ async def _abort_upload(
         session (aiohttp.ClientSession): The aiohttp client session.
         url (str): The URL to send the DELETE request to.
         dataverse_url (str): The base URL of the Dataverse instance.
+        api_token (str): The API token to use for the request.
 
     Raises:
         aiohttp.ClientResponseError: If the DELETE request fails.
     """
-    async with session.delete(urljoin(dataverse_url, url)) as response:
+
+    headers = {
+        "X-Dataverse-key": api_token,
+    }
+
+    async with session.delete(urljoin(dataverse_url, url), headers=headers) as response:
         response.raise_for_status()
 
 
@@ -563,6 +572,7 @@ async def _multipart_json_data_request(
     Returns:
         None
     """
+
     with aiohttp.MultipartWriter("form-data") as writer:
         json_part = writer.append(json_data)
         json_part.set_content_disposition("form-data", name="jsonData")

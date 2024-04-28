@@ -48,8 +48,8 @@ import dvuploader as dv
 # Add file individually
 files = [
     dv.File(filepath="./small.txt"),
-    dv.File(directoryLabel="some/dir", filepath="./medium.txt"),
-    dv.File(directoryLabel="some/dir", filepath="./big.txt"),
+    dv.File(directory_label="some/dir", filepath="./medium.txt"),
+    dv.File(directory_label="some/dir", filepath="./big.txt"),
     *dv.add_directory("./data"), # Add an entire directory
 ]
 
@@ -88,7 +88,7 @@ Alternatively, you can also supply a `config` file that contains all necessary i
 * `api_token`: API token of the Dataverse instance.
 * `files`: List of files to upload. Each file is a dictionary with the following keys:
   * `filepath`: Path to the file to upload.
-  * `directoryLabel`: Optional directory label to upload the file to.
+  * `directory_label`: Optional directory label to upload the file to.
   * `description`: Optional description of the file.
   * `mimetype`: Mimetype of the file.
   * `categories`: Optional list of categories to assign to the file.
@@ -104,9 +104,9 @@ api_token: XXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
 files:
     - filepath: ./small.txt
     - filepath: ./medium.txt
-      directoryLabel: some/dir
+      directory_label: some/dir
     - filepath: ./big.txt
-      directoryLabel: some/dir
+      directory_label: some/dir
 ```
 
 The `config` file can then be used as follows:

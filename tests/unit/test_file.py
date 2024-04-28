@@ -10,13 +10,13 @@ class TestFile:
         # Act
         file = File(
             filepath=fpath,
-            directoryLabel="",
+            directory_label="",
         )
 
-        file.extract_filename_hash_file()
+        file.extract_file_name_hash_file()
 
         # Assert
-        assert file.fileName == "somefile.txt"
+        assert file.file_name == "somefile.txt"
 
     def test_read_non_existent_file(self):
         # Arrange
@@ -26,10 +26,10 @@ class TestFile:
         with pytest.raises(FileNotFoundError):
             file = File(
                 filepath=fpath,
-                directoryLabel="",
+                directory_label="",
             )
 
-            file.extract_filename_hash_file()
+            file.extract_file_name_hash_file()
 
     def test_read_non_file(self):
         # Arrange
@@ -39,7 +39,7 @@ class TestFile:
         with pytest.raises(IsADirectoryError):
             file = File(
                 filepath=fpath,
-                directoryLabel="",
+                directory_label="",
             )
 
-            file.extract_filename_hash_file()
+            file.extract_file_name_hash_file()
