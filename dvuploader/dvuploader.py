@@ -1,4 +1,5 @@
 import asyncio
+import json
 from urllib.parse import urljoin
 import requests
 import os
@@ -18,6 +19,7 @@ from dvuploader.directupload import (
 from dvuploader.file import File
 from dvuploader.nativeupload import native_upload
 from dvuploader.utils import build_url, retrieve_dataset_files, setup_pbar
+
 
 class DVUploader(BaseModel):
     """
@@ -153,10 +155,7 @@ class DVUploader(BaseModel):
 
         if not verbose:
             tasks = [
-                self._validate_and_hash_file(
-                    file=file,
-                    verbose=self.verbose
-                )
+                self._validate_and_hash_file(file=file, verbose=self.verbose)
                 for file in self.files
             ]
 
@@ -175,10 +174,7 @@ class DVUploader(BaseModel):
 
             tasks = [
                 self._validate_and_hash_file(
-                    file=file,
-                    progress=progress,
-                    task_id=task,
-                    verbose=self.verbose
+                    file=file, progress=progress, task_id=task, verbose=self.verbose
                 )
                 for file in self.files
             ]
@@ -197,7 +193,7 @@ class DVUploader(BaseModel):
         file.extract_file_name_hash_file()
 
         if verbose:
-            progress.update(task_id, advance=1) # type: ignore
+            progress.update(task_id, advance=1)  # type: ignore
 
     def _check_duplicates(
         self,
@@ -240,7 +236,7 @@ class DVUploader(BaseModel):
                 map(lambda dsFile: self._check_hashes(file, dsFile), ds_files)
             )
 
-            if has_same_hash and file.checksum:
+            if has_same_hash:
                 n_skip_files += 1
                 table.add_row(
                     file.file_name, "[bright_black]Same hash", "[bright_black]Skip"
@@ -316,12 +312,14 @@ class DVUploader(BaseModel):
             return False
 
         hash_algo, hash_value = tuple(dsFile["dataFile"]["checksum"].values())
+        path = os.path.join(
+            dsFile.get("directoryLabel", ""), dsFile["dataFile"]["filename"]
+        )
 
         return (
             file.checksum.value == hash_value
             and file.checksum.type == hash_algo
-            and file.file_name == dsFile["label"]
-            and file.directory_label == dsFile.get("directoryLabel", "")
+            and path == os.path.join(file.directory_label, file.file_name)  # type: ignore
         )
 
     @staticmethod
