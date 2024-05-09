@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dvuploader"
-version = "0.2.2"
+version = "0.2.3"
 description = "Python library for uploading (bulk) data to Dataverse"
 authors = ["Jan Range"]
 readme = "README.md"
