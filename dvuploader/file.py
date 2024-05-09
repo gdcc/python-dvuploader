@@ -74,7 +74,9 @@ class File(BaseModel):
             self.directory_label = os.path.dirname(self.filepath)
             self.handler.seek(0)
 
-        self.file_name = os.path.basename(self.filepath)
+        if self.file_name is None:
+            self.file_name = os.path.basename(self.filepath)
+
         self.checksum = Checksum.from_file(
             handler=self.handler,
             hash_fun=hash_fun,
