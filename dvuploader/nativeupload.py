@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 from typing import List, Tuple
+from typing_extensions import Dict
 import aiofiles
 import aiohttp
 
@@ -10,11 +11,12 @@ from rich.progress import Progress, TaskID
 
 from dvuploader.file import File
 from dvuploader.packaging import distribute_files, zip_files
-from dvuploader.utils import build_url
+from dvuploader.utils import build_url, retrieve_dataset_files
 
 MAX_RETRIES = os.environ.get("DVUPLOADER_MAX_RETRIES", 15)
 NATIVE_UPLOAD_ENDPOINT = "/api/datasets/:persistentId/add"
 NATIVE_REPLACE_ENDPOINT = "/api/files/{FILE_ID}/replace"
+NATIVE_METADATA_ENDPOINT = "/api/files/{FILE_ID}/metadata"
 
 assert isinstance(MAX_RETRIES, int), "DVUPLOADER_MAX_RETRIES must be an integer"
 
@@ -74,6 +76,22 @@ async def native_upload(
             ]
 
             responses = await asyncio.gather(*tasks)
+            _validate_upload_responses(responses, files)
+
+            await _update_metadata(
+                session=session,
+                files=files,
+                persistent_id=persistent_id,
+                dataverse_url=dataverse_url,
+                api_token=api_token,
+            )
+
+
+def _validate_upload_responses(
+    responses: List[Tuple],
+    files: List[File],
+) -> None:
+    """Validates the responses of the native upload requests."""
 
     for (status, response), file in zip(responses, files):
         if status == 200:
@@ -174,20 +192,21 @@ async def _single_native_upload(
             endpoint=NATIVE_REPLACE_ENDPOINT.format(FILE_ID=file.file_id),
         )
 
-    json_data = {
-        "description": file.description,
-        "forceReplace": True,
-        "directoryLabel": file.directory_label,
-        "categories": file.categories,
-        "restrict": file.restrict,
-        "forceReplace": True,
-    }
+    json_data = _get_json_data(file)
 
     for _ in range(MAX_RETRIES):
 
         formdata = aiohttp.FormData()
-        formdata.add_field("jsonData", json.dumps(json_data), content_type="application/json")
-        formdata.add_field("file", file.handler, filename=file.file_name)
+        formdata.add_field(
+            "jsonData",
+            json.dumps(json_data),
+            content_type="application/json",
+        )
+        formdata.add_field(
+            "file",
+            file.handler,
+            filename=file.file_name,
+        )
 
         async with session.post(endpoint, data=formdata) as response:
             status = response.status
@@ -234,3 +253,127 @@ def file_sender(
         yield chunk
         chunk = file.handler.read(chunk_size)
         progress.advance(pbar, advance=chunk_size)
+
+
+def _get_json_data(file: File) -> Dict:
+    """Returns the JSON data for the native upload request."""
+    return {
+        "description": file.description,
+        "directoryLabel": file.directory_label,
+        "categories": file.categories,
+        "restrict": file.restrict,
+        "forceReplace": True,
+    }
+
+
+async def _update_metadata(
+    session: aiohttp.ClientSession,
+    files: List[File],
+    dataverse_url: str,
+    api_token: str,
+    persistent_id: str,
+):
+    """Updates the metadata of the given files in a Dataverse repository.
+
+    Args:
+
+        session (aiohttp.ClientSession): The aiohttp client session.
+        files (List[File]): The files to update the metadata for.
+        dataverse_url (str): The URL of the Dataverse repository.
+        api_token (str): The API token of the Dataverse repository.
+        persistent_id (str): The persistent identifier of the dataset.
+    """
+
+    file_mapping = _retrieve_file_ids(
+        persistent_id=persistent_id,
+        dataverse_url=dataverse_url,
+        api_token=api_token,
+    )
+
+    tasks = []
+
+    for file in files:
+        dv_path = os.path.join(file.directory_label, file.file_name)  # type: ignore
+
+        try:
+            file_id = file_mapping[dv_path]
+        except KeyError:
+            raise ValueError(
+                (
+                    f"File {dv_path} not found in Dataverse repository.",
+                    "This may be due to the file not being uploaded to the repository.",
+                )
+            )
+
+        task = _update_single_metadata(
+            session=session,
+            url=NATIVE_METADATA_ENDPOINT.format(FILE_ID=file_id),
+            file=file,
+        )
+
+        tasks.append(task)
+
+    await asyncio.gather(*tasks)
+
+
+async def _update_single_metadata(
+    session: aiohttp.ClientSession,
+    url: str,
+    file: File,
+) -> None:
+    """Updates the metadata of a single file in a Dataverse repository."""
+
+    json_data = _get_json_data(file)
+
+    del json_data["forceReplace"]
+    del json_data["restrict"]
+
+    formdata = aiohttp.FormData()
+    formdata.add_field(
+        "jsonData",
+        json.dumps(json_data),
+        content_type="application/json",
+    )
+
+    async with session.post(url, data=formdata) as response:
+        response.raise_for_status()
+
+
+def _retrieve_file_ids(
+    persistent_id: str,
+    dataverse_url: str,
+    api_token: str,
+) -> Dict[str, str]:
+    """Retrieves the file IDs of the given files.
+
+    Args:
+        files (List[File]): The files to retrieve the IDs for.
+        persistent_id (str): The persistent identifier of the dataset.
+        dataverse_url (str): The URL of the Dataverse repository.
+        api_token (str): The API token of the Dataverse repository.
+
+    Returns:
+        Dict[str, str]: The list of file IDs.
+    """
+
+    # Fetch file metadata
+    ds_files = retrieve_dataset_files(
+        persistent_id=persistent_id,
+        dataverse_url=dataverse_url,
+        api_token=api_token,
+    )
+
+    return _create_file_id_path_mapping(ds_files)
+
+
+def _create_file_id_path_mapping(files):
+    """Creates dictionary that maps from directoryLabel + filename to ID"""
+    mapping = {}
+
+    for file in files:
+        directory_label = file.get("directoryLabel", "")
+        file = file["dataFile"]
+        path = os.path.join(directory_label, file["filename"])
+        mapping[path] = file["id"]
+
+    return mapping
