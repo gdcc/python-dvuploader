@@ -1,4 +1,5 @@
 from io import BytesIO
+import os
 import json
 import tempfile
 
@@ -58,6 +59,53 @@ class TestNativeUpload:
             assert len(files) == 3
             assert sorted([file["label"] for file in files]) == sorted(expected_files)
 
+    def test_native_upload_renamed_file(
+        self,
+        credentials,
+    ):
+
+        BASE_URL, API_TOKEN = credentials
+
+        with tempfile.TemporaryDirectory() as directory:
+            # Arrange
+            create_mock_file(directory, "will_be_renamed.txt", size=1)
+
+            # Add a file and rename it during upload
+            files = [
+                File(
+                    filepath=os.path.join(directory, "will_be_renamed.txt"),
+                    file_name="renamed_file.txt",  # type: ignore
+                )
+            ]
+
+            # Create Dataset
+            pid = create_dataset(
+                parent="Root",
+                server_url=BASE_URL,
+                api_token=API_TOKEN,
+            )
+
+            # Act
+            uploader = DVUploader(files=files)
+            uploader.upload(
+                persistent_id=pid,
+                api_token=API_TOKEN,
+                dataverse_url=BASE_URL,
+                n_parallel_uploads=1,
+            )
+
+            # Assert
+            files = retrieve_dataset_files(
+                dataverse_url=BASE_URL,
+                persistent_id=pid,
+                api_token=API_TOKEN,
+            )
+
+            expected_files = ["renamed_file.txt"]
+
+            assert len(files) == 1
+            assert sorted([file["label"] for file in files]) == sorted(expected_files)
+
     def test_forced_native_upload(
         self,
         credentials,
@@ -106,7 +154,6 @@ class TestNativeUpload:
             assert len(files) == 3
             assert sorted([file["label"] for file in files]) == sorted(expected_files)
 
-
     def test_native_upload_by_handler(
         self,
         credentials,
@@ -117,7 +164,7 @@ class TestNativeUpload:
         byte_string = b"Hello, World!"
         files = [
             File(filepath="subdir/file.txt", handler=BytesIO(byte_string)),
-            File(filepath="biggerfile.txt", handler=BytesIO(byte_string*10000)),
+            File(filepath="biggerfile.txt", handler=BytesIO(byte_string * 10000)),
         ]
 
         # Create Dataset
@@ -154,5 +201,9 @@ class TestNativeUpload:
 
             file = next(file for file in files if file["label"] == ex_f)
 
-            assert file["label"] == ex_f, f"File label does not match for file {json.dumps(file)}"
-            assert file.get("directoryLabel", "") == ex_dir, f"Directory label does not match for file {json.dumps(file)}"
+            assert (
+                file["label"] == ex_f
+            ), f"File label does not match for file {json.dumps(file)}"
+            assert (
+                file.get("directoryLabel", "") == ex_dir
+            ), f"Directory label does not match for file {json.dumps(file)}"
