@@ -1,11 +1,11 @@
 import asyncio
+import httpx
 from io import BytesIO
 import json
 import os
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin
 import aiofiles
-import aiohttp
 
 from dvuploader.file import File
 from dvuploader.utils import build_url
@@ -52,8 +52,13 @@ async def direct_upload(
     """
 
     leave_bar = len(files) < MAX_FILE_DISPLAY
-    connector = aiohttp.TCPConnector(limit=n_parallel_uploads)
-    async with aiohttp.ClientSession(connector=connector) as session:
+
+    session_params = {
+        "timeout": None,
+        "limits": httpx.Limits(max_connections=n_parallel_uploads),
+    }
+
+    async with httpx.AsyncClient(**session_params) as session:
         tasks = [
             _upload_to_store(
                 session=session,
@@ -83,11 +88,14 @@ async def direct_upload(
     }
 
     pbar = progress.add_task("╰── [bold white]Registering files", total=1)
-    connector = aiohttp.TCPConnector(limit=2)
-    async with aiohttp.ClientSession(
-        headers=headers,
-        connector=connector,
-    ) as session:
+
+    session_params = {
+        "timeout": None,
+        "limits": httpx.Limits(max_connections=n_parallel_uploads),
+        "headers": headers,
+    }
+
+    async with httpx.AsyncClient(**session_params) as session:
         await _add_files_to_ds(
             session=session,
             files=files,
@@ -99,7 +107,7 @@ async def direct_upload(
 
 
 async def _upload_to_store(
-    session: aiohttp.ClientSession,
+    session: httpx.AsyncClient,
     file: File,
     persistent_id: str,
     dataverse_url: str,
@@ -113,7 +121,7 @@ async def _upload_to_store(
     Uploads a file to a Dataverse collection using direct upload.
 
     Args:
-        session (aiohttp.ClientSession): The aiohttp client session.
+        session (httpx.AsyncClient): The httpx async client session.
         file (File): The file object to upload.
         persistent_id (str): The persistent identifier of the Dataverse dataset to upload to.
         dataverse_url (str): The URL of the Dataverse instance to upload to.
@@ -137,7 +145,7 @@ async def _upload_to_store(
         persistent_id=persistent_id,
     )
 
-    if not "urls" in ticket:
+    if "urls" not in ticket:
         status, storage_identifier = await _upload_singlepart(
             session=session,
             ticket=ticket,
@@ -165,7 +173,7 @@ async def _upload_to_store(
 
 
 async def _request_ticket(
-    session: aiohttp.ClientSession,
+    session: httpx.AsyncClient,
     dataverse_url: str,
     api_token: str,
     persistent_id: str,
@@ -178,7 +186,7 @@ async def _request_ticket(
     and storageIdentifier that will be used later to perform the upload.
 
     Args:
-        session (aiohttp.ClientSession): The aiohttp client session to use for the request.
+        session (httpx.AsyncClient): The httpx async client session to use for the request.
         dataverse_url (str): The URL of the Dataverse installation.
         api_token (str): The API token used to access the dataset.
         persistent_id (str): The persistent identifier of the dataset of interest.
@@ -194,14 +202,14 @@ async def _request_ticket(
         size=file_size,
     )
 
-    async with session.get(url) as response:
-        response.raise_for_status()
-        payload = await response.json()
-        return payload["data"]
+    response = await session.get(url)
+    response.raise_for_status()
+
+    return response.json()["data"]
 
 
 async def _upload_singlepart(
-    session: aiohttp.ClientSession,
+    session: httpx.AsyncClient,
     ticket: Dict,
     file: File,
     pbar,
@@ -213,7 +221,7 @@ async def _upload_singlepart(
     Uploads a single part of a file to a remote server using HTTP PUT method.
 
     Args:
-        session (aiohttp.ClientSession): The aiohttp client session used for the upload.
+        session (httpx.AsyncClient): The httpx async client session used for the upload.
         ticket (Dict): A dictionary containing the response from the server.
         filepath (str): The path to the file to be uploaded.
         pbar (tqdm): A progress bar object to track the upload progress.
@@ -224,7 +232,7 @@ async def _upload_singlepart(
         Tuple[bool, str]: A tuple containing the status of the upload (True for success, False for failure)
                           and the storage identifier of the uploaded file.
     """
-    assert "url" in ticket, "Couldnt find 'url'"
+    assert "url" in ticket, "Couldn't find 'url'"
 
     if TESTING:
         ticket["url"] = ticket["url"].replace("localstack", "localhost", 1)
@@ -237,26 +245,25 @@ async def _upload_singlepart(
     params = {
         "headers": headers,
         "url": ticket["url"],
-        "data": file.handler,
+        "files": {"": file.handler},
     }
 
-    async with session.put(**params) as response:
-        status = response.status == 200
-        response.raise_for_status()
+    response = await session.put(**params)
+    response.raise_for_status()
 
-        if status:
-            progress.update(pbar, advance=file._size)
-            await asyncio.sleep(0.1)
-            progress.update(
-                pbar,
-                visible=leave_bar,
-            )
+    if response.status_code == 200:
+        progress.update(pbar, advance=file._size)
+        await asyncio.sleep(0.1)
+        progress.update(
+            pbar,
+            visible=leave_bar,
+        )
 
-        return status, storage_identifier
+    return response.status_code == 200, storage_identifier
 
 
 async def _upload_multipart(
-    session: aiohttp.ClientSession,
+    session: httpx.AsyncClient,
     response: Dict,
     file: File,
     dataverse_url: str,
@@ -268,7 +275,7 @@ async def _upload_multipart(
     Uploads a file to Dataverse using multipart upload.
 
     Args:
-        session (aiohttp.ClientSession): The aiohttp client session.
+        session (httpx.AsyncClient): The httpx async client session.
         response (Dict): The response from the Dataverse API containing the upload ticket information.
         file (File): The file object to be uploaded.
         dataverse_url (str): The URL of the Dataverse instance.
@@ -322,7 +329,7 @@ async def _upload_multipart(
 
 async def _chunked_upload(
     file: File,
-    session: aiohttp.ClientSession,
+    session: httpx.AsyncClient,
     urls,
     chunk_size: int,
     pbar,
@@ -333,7 +340,7 @@ async def _chunked_upload(
 
     Args:
         file (File): The file object to upload.
-        session (aiohttp.ClientSession): The aiohttp client session to use for the upload.
+        session (httpx.AsyncClient): The httpx async client session to use for the upload.
         urls: An iterable of URLs to upload the file chunks to.
         chunk_size (int): The size of each chunk in bytes.
         pbar (tqdm): The progress bar to update during the upload.
@@ -386,15 +393,15 @@ async def _chunked_upload(
 def _validate_ticket_response(response: Dict) -> None:
     """Validate the response from the ticket request to include all necessary fields."""
 
-    assert "abort" in response, "Couldnt find 'abort'"
-    assert "complete" in response, "Couldnt find 'complete'"
-    assert "partSize" in response, "Couldnt find 'partSize'"
-    assert "urls" in response, "Couldnt find 'urls'"
+    assert "abort" in response, "Couldn't find 'abort'"
+    assert "complete" in response, "Couldn't find 'complete'"
+    assert "partSize" in response, "Couldn't find 'partSize'"
+    assert "urls" in response, "Couldn't find 'urls'"
     assert "storageIdentifier" in response, "Could not find 'storageIdentifier'"
 
 
 async def _upload_chunk(
-    session: aiohttp.ClientSession,
+    session: httpx.AsyncClient,
     url: str,
     file: BytesIO,
 ):
@@ -402,7 +409,7 @@ async def _upload_chunk(
     Uploads a chunk of data to the specified URL using the provided session.
 
     Args:
-        session (aiohttp.ClientSession): The session to use for the upload.
+        session (httpx.AsyncClient): The session to use for the upload.
         url (str): The URL to upload the chunk to.
         file (ChunkStream): The chunk of data to upload.
         pbar: The progress bar to update during the upload.
@@ -419,13 +426,14 @@ async def _upload_chunk(
         "data": file,
     }
 
-    async with session.put(**params) as response:
-        response.raise_for_status()
-        return response.headers.get("ETag")
+    response = await session.put(**params)
+    response.raise_for_status()
+
+    return response.headers.get("ETag")
 
 
 async def _complete_upload(
-    session: aiohttp.ClientSession,
+    session: httpx.AsyncClient,
     url: str,
     dataverse_url: str,
     e_tags: List[Optional[str]],
@@ -434,7 +442,7 @@ async def _complete_upload(
     """Completes the upload by sending the E tags
 
     Args:
-        session (aiohttp.ClientSession): The aiohttp client session.
+        session (httpx.AsyncClient): The aiohttp client session.
         url (str): The URL to send the PUT request to.
         dataverse_url (str): The base URL of the Dataverse instance.
         e_tags (List[str]): The list of E tags to send in the payload.
@@ -453,12 +461,12 @@ async def _complete_upload(
         },
     }
 
-    async with session.put(**params) as response:
-        response.raise_for_status()
+    response = await session.put(**params)
+    response.raise_for_status()
 
 
 async def _abort_upload(
-    session: aiohttp.ClientSession,
+    session: httpx.AsyncClient,
     url: str,
     dataverse_url: str,
     api_token: str,
@@ -467,7 +475,7 @@ async def _abort_upload(
     Aborts an ongoing upload by sending a DELETE request to the specified URL.
 
     Args:
-        session (aiohttp.ClientSession): The aiohttp client session.
+        session (httpx.AsyncClient): The httpx async client session.
         url (str): The URL to send the DELETE request to.
         dataverse_url (str): The base URL of the Dataverse instance.
         api_token (str): The API token to use for the request.
@@ -476,16 +484,15 @@ async def _abort_upload(
         aiohttp.ClientResponseError: If the DELETE request fails.
     """
 
-    headers = {
-        "X-Dataverse-key": api_token,
-    }
+    headers = {"X-Dataverse-key": api_token}
 
-    async with session.delete(urljoin(dataverse_url, url), headers=headers) as response:
-        response.raise_for_status()
+    url = urljoin(dataverse_url, url)
+    response = await session.delete(url, headers=headers)
+    response.raise_for_status()
 
 
 async def _add_files_to_ds(
-    session: aiohttp.ClientSession,
+    session: httpx.AsyncClient,
     dataverse_url: str,
     pid: str,
     files: List[File],
@@ -496,7 +503,7 @@ async def _add_files_to_ds(
     Adds a file to a Dataverse dataset.
 
     Args:
-        session (aiohttp.ClientSession): The aiohttp client session.
+        session (httpx.AsyncClient): The httpx async client session.
         dataverse_url (str): The URL of the Dataverse instance.
         pid (str): The persistent identifier of the dataset.
         file (File): The file to be added.
@@ -526,7 +533,7 @@ async def _add_files_to_ds(
     progress.update(pbar, advance=1)
 
 
-def _prepare_registration(files: List[File], use_replace: bool) -> str:
+def _prepare_registration(files: List[File], use_replace: bool) -> List[Dict]:
     """
     Prepares the files for registration at the Dataverse instance.
 
@@ -534,29 +541,26 @@ def _prepare_registration(files: List[File], use_replace: bool) -> str:
         files (List[File]): The list of files to prepare.
 
     Returns:
-        str: A JSON string containing the file data.
+        List[Dict]: The list of files prepared for registration.
     """
 
     exclude = {"to_replace"} if use_replace else {"to_replace", "file_id"}
 
-    return json.dumps(
-        [
-            file.model_dump(
-                by_alias=True,
-                exclude=exclude,
-                exclude_none=True,
-            )
-            for file in files
-            if file.to_replace is use_replace
-        ],
-        indent=2,
-    )
+    return [
+        file.model_dump(
+            by_alias=True,
+            exclude=exclude,
+            exclude_none=True,
+        )
+        for file in files
+        if file.to_replace is use_replace
+    ]
 
 
 async def _multipart_json_data_request(
-    json_data: str,
+    json_data: List[Dict],
     url: str,
-    session: aiohttp.ClientSession,
+    session: httpx.AsyncClient,
 ):
     """
     Sends a multipart/form-data POST request with JSON data to the specified URL using the provided session.
@@ -564,18 +568,22 @@ async def _multipart_json_data_request(
     Args:
         json_data (str): The JSON data to be sent in the request body.
         url (str): The URL to send the request to.
-        session (aiohttp.ClientSession): The aiohttp client session to use for the request.
+        session (httpx.AsyncClient): The httpx async client session to use for the request.
 
     Raises:
-        aiohttp.ClientResponseError: If the response status code is not successful.
+        httpx.HTTPStatusError: If the response status code is not successful.
 
     Returns:
         None
     """
 
-    with aiohttp.MultipartWriter("form-data") as writer:
-        json_part = writer.append(json_data)
-        json_part.set_content_disposition("form-data", name="jsonData")
+    files = {
+        "jsonData": (
+            None,
+            BytesIO(json.dumps(json_data).encode()),
+            "application/json",
+        ),
+    }
 
-        async with session.post(url, data=writer) as response:
-            response.raise_for_status()
+    response = await session.post(url, files=files)
+    response.raise_for_status()
