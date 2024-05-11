@@ -1,6 +1,6 @@
 import asyncio
 from urllib.parse import urljoin
-import requests
+import httpx
 import os
 import rich
 from typing import Dict, List, Optional
@@ -170,7 +170,6 @@ class DVUploader(BaseModel):
         )
 
         with progress:
-
             tasks = [
                 self._validate_and_hash_file(
                     file=file, progress=progress, task_id=task, verbose=self.verbose
@@ -337,7 +336,7 @@ class DVUploader(BaseModel):
         )
 
         # Send HTTP request
-        response = requests.get(query)
+        response = httpx.get(query)
 
         if response.status_code == 404:
             return False
