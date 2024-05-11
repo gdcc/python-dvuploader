@@ -1,7 +1,7 @@
 <h1 align="center">
   Dataverse Uploader</br>
   <a href="https://badge.fury.io/py/dvuploader"><img src="https://badge.fury.io/py/dvuploader.svg" alt="PyPI version" height="18"></a>
-  <img src="https://img.shields.io/badge/python-3.8 | 3.9 | 3.10 | 3.11-blue.svg" alt="Build Badge">
+  <img src="https://img.shields.io/badge/python-3.9 | 3.10 | 3.11-blue.svg" alt="Build Badge">
   <img src="https://github.com/gdcc/python-dvuploader/actions/workflows/test.yml/badge.svg" alt="Build Badge">
 </h1>
 
@@ -81,7 +81,7 @@ dvuploader my_file.txt my_other_file.txt \
 
 #### Using a config file
 
-Alternatively, you can also supply a `config` file that contains all necessary informations for the uploader. The `config` file is a JSON/YAML file that contains the following keys:
+Alternatively, you can also supply a `config` file that contains all necessary information for the uploader. The `config` file is a JSON/YAML file that contains the following keys:
 
 * `persistent_id`: Persistent identifier of the dataset to upload to.
 * `dataverse_url`: URL of the Dataverse instance.
