@@ -2,6 +2,7 @@ import os
 import zipfile
 
 from typing import List, Tuple
+from dvuploader.file import File
 
 MAXIMUM_PACKAGE_SIZE = int(
     os.environ.get(
@@ -11,7 +12,7 @@ MAXIMUM_PACKAGE_SIZE = int(
 )
 
 
-def distribute_files(dv_files: List["File"]):  # type: ignore
+def distribute_files(dv_files: List[File]):
     """
     Distributes a list of files into packages based on their sizes.
 
@@ -27,7 +28,6 @@ def distribute_files(dv_files: List["File"]):  # type: ignore
     package_index = 0
     current_size = 0
     for file in dv_files:
-
         if file._size > MAXIMUM_PACKAGE_SIZE:
             current_package, current_size, package_index = _append_and_reset(
                 (package_index, [file]),
@@ -54,8 +54,8 @@ def distribute_files(dv_files: List["File"]):  # type: ignore
 
 
 def _append_and_reset(
-    package: Tuple[int, List["File"]],  # type: ignore
-    packages: List[Tuple[int, List["File"]]],  # type: ignore
+    package: Tuple[int, List[File]],
+    packages: List[Tuple[int, List[File]]],
 ):
     """
     Appends the given package to the packages list and resets the package list.
@@ -72,7 +72,7 @@ def _append_and_reset(
 
 
 def zip_files(
-    files: List["File"],  # type: ignore
+    files: List[File],
     tmp_dir: str,
     index: int,
 ):
@@ -91,14 +91,14 @@ def zip_files(
     with zipfile.ZipFile(path, "w") as zip_file:
         for file in files:
             zip_file.writestr(
-                data=file.handler.read(),
+                data=file.handler.read(),  # type: ignore
                 zinfo_or_arcname=_create_arcname(file),
             )
 
     return path
 
 
-def _create_arcname(file: "File"):  # type: ignore
+def _create_arcname(file: File):
     """
     Creates the arcname for the given file.
 

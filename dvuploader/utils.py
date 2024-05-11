@@ -1,14 +1,12 @@
-import json
 import os
 import pathlib
 import re
 from typing import List
 from urllib.parse import urljoin
-import requests
+import httpx
 from rich.progress import Progress
 
 from dvuploader.file import File
-import os
 
 
 def build_url(
@@ -59,7 +57,7 @@ def retrieve_dataset_files(
 
     DATASET_ENDPOINT = f"/api/datasets/:persistentId/?persistentId={persistent_id}"
 
-    response = requests.get(
+    response = httpx.get(
         urljoin(dataverse_url, DATASET_ENDPOINT),
         headers={"X-Dataverse-key": api_token},
     )

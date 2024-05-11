@@ -2,7 +2,6 @@ from io import BytesIO
 import json
 import tempfile
 
-import pytest
 from dvuploader.dvuploader import DVUploader
 from dvuploader.file import File
 

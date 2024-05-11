@@ -1,11 +1,11 @@
 import asyncio
+from io import BytesIO
+import httpx
 import json
 import os
 import tempfile
-from typing import List, Tuple
-from typing_extensions import Dict
-import aiofiles
-import aiohttp
+import tenacity
+from typing import List, Tuple, Dict
 
 from rich.progress import Progress, TaskID
 
@@ -13,7 +13,7 @@ from dvuploader.file import File
 from dvuploader.packaging import distribute_files, zip_files
 from dvuploader.utils import build_url, retrieve_dataset_files
 
-MAX_RETRIES = os.environ.get("DVUPLOADER_MAX_RETRIES", 15)
+MAX_RETRIES = int(os.environ.get("DVUPLOADER_MAX_RETRIES", 15))
 NATIVE_UPLOAD_ENDPOINT = "/api/datasets/:persistentId/add"
 NATIVE_REPLACE_ENDPOINT = "/api/files/{FILE_ID}/replace"
 NATIVE_METADATA_ENDPOINT = "/api/files/{FILE_ID}/metadata"
@@ -49,13 +49,11 @@ async def native_upload(
     session_params = {
         "base_url": dataverse_url,
         "headers": {"X-Dataverse-key": api_token},
-        "connector": aiohttp.TCPConnector(
-            limit=n_parallel_uploads,
-            timeout_ceil_threshold=120,
-        ),
+        "timeout": None,
+        "limits": httpx.Limits(max_connections=n_parallel_uploads),
     }
 
-    async with aiohttp.ClientSession(**session_params) as session:
+    async with httpx.AsyncClient(**session_params) as session:
         with tempfile.TemporaryDirectory() as tmp_dir:
             packages = distribute_files(files)
             packaged_files = _zip_packages(
@@ -161,8 +159,12 @@ def _reset_progress(
         progress.remove_task(pbar)
 
 
+@tenacity.retry(
+    wait=tenacity.wait_fixed(0.5),
+    stop=tenacity.stop_after_attempt(MAX_RETRIES),
+)
 async def _single_native_upload(
-    session: aiohttp.ClientSession,
+    session: httpx.AsyncClient,
     file: File,
     persistent_id: str,
     pbar,
@@ -172,7 +174,7 @@ async def _single_native_upload(
     Uploads a file to a Dataverse repository using the native upload method.
 
     Args:
-        session (aiohttp.ClientSession): The aiohttp client session.
+        session (httpx.AsyncClient): The aiohttp client session.
         file (File): The file to be uploaded.
         persistent_id (str): The persistent identifier of the dataset.
         pbar: The progress bar object.
@@ -194,65 +196,34 @@ async def _single_native_upload(
 
     json_data = _get_json_data(file)
 
-    for _ in range(MAX_RETRIES):
+    files = {
+        "file": (file.file_name, file.handler, file.mimeType),
+        "jsonData": (
+            None,
+            BytesIO(json.dumps(json_data).encode()),
+            "application/json",
+        ),
+    }
 
-        formdata = aiohttp.FormData()
-        formdata.add_field(
-            "jsonData",
-            json.dumps(json_data),
-            content_type="application/json",
-        )
-        formdata.add_field(
-            "file",
-            file.handler,
-            filename=file.file_name,
-        )
+    response = await session.post(
+        endpoint,
+        files=files,  # type: ignore
+    )
 
-        async with session.post(endpoint, data=formdata) as response:
-            status = response.status
+    response.raise_for_status()
 
-            if status == 200:
-                progress.update(pbar, advance=file._size, complete=file._size)
-
-                # Wait to avoid rate limiting
-                await asyncio.sleep(0.7)
-
-                return status, await response.json()
+    if response.status_code == 200:
+        progress.update(pbar, advance=file._size, complete=file._size)
 
         # Wait to avoid rate limiting
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(0.7)
+
+        return 200, response.json()
+
+    # Wait to avoid rate limiting
+    await asyncio.sleep(1.0)
 
     return False, {"message": "Failed to upload file"}
-
-
-def file_sender(
-    file: File,
-    progress: Progress,
-    pbar: TaskID,
-):
-    """
-    Asynchronously reads and yields chunks of a file.
-
-    Args:
-        file_name (str): The name of the file to read.
-        progress (Progress): The progress object to track the file upload progress.
-        pbar (TaskID): The ID of the progress bar associated with the file upload.
-
-    Yields:
-        bytes: The chunks of the file.
-
-    """
-
-    assert file.handler is not None, "File handler is not set."
-
-    chunk_size = 64 * 1024  # 10 MB
-    chunk = file.handler.read(chunk_size)
-    progress.advance(pbar, advance=chunk_size)
-
-    while chunk:
-        yield chunk
-        chunk = file.handler.read(chunk_size)
-        progress.advance(pbar, advance=chunk_size)
 
 
 def _get_json_data(file: File) -> Dict:
@@ -267,7 +238,7 @@ def _get_json_data(file: File) -> Dict:
 
 
 async def _update_metadata(
-    session: aiohttp.ClientSession,
+    session: httpx.AsyncClient,
     files: List[File],
     dataverse_url: str,
     api_token: str,
@@ -277,7 +248,7 @@ async def _update_metadata(
 
     Args:
 
-        session (aiohttp.ClientSession): The aiohttp client session.
+        session (httpx.AsyncClient): The httpx async client.
         files (List[File]): The files to update the metadata for.
         dataverse_url (str): The URL of the Dataverse repository.
         api_token (str): The API token of the Dataverse repository.
@@ -316,8 +287,12 @@ async def _update_metadata(
     await asyncio.gather(*tasks)
 
 
+@tenacity.retry(
+    wait=tenacity.wait_fixed(0.3),
+    stop=tenacity.stop_after_attempt(MAX_RETRIES),
+)
 async def _update_single_metadata(
-    session: aiohttp.ClientSession,
+    session: httpx.AsyncClient,
     url: str,
     file: File,
 ) -> None:
@@ -328,15 +303,25 @@ async def _update_single_metadata(
     del json_data["forceReplace"]
     del json_data["restrict"]
 
-    formdata = aiohttp.FormData()
-    formdata.add_field(
-        "jsonData",
-        json.dumps(json_data),
-        content_type="application/json",
-    )
+    # Send metadata as a readable byte stream
+    # This is a workaround since "data" and "json"
+    # does not work
+    files = {
+        "jsonData": (
+            None,
+            BytesIO(json.dumps(json_data).encode()),
+            "application/json",
+        ),
+    }
 
-    async with session.post(url, data=formdata) as response:
-        response.raise_for_status()
+    response = await session.post(url, files=files)
+
+    if response.status_code == 200:
+        return
+    else:
+        await asyncio.sleep(1.0)
+
+    raise ValueError(f"Failed to update metadata for file {file.file_name}.")
 
 
 def _retrieve_file_ids(

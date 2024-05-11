@@ -1,7 +1,7 @@
 <h1 align="center">
   Dataverse Uploader</br>
   <a href="https://badge.fury.io/py/dvuploader"><img src="https://badge.fury.io/py/dvuploader.svg" alt="PyPI version" height="18"></a>
-  <img src="https://img.shields.io/badge/python-3.8 | 3.9 | 3.10 | 3.11-blue.svg" alt="Build Badge">
+  <img src="https://img.shields.io/badge/python-3.9 | 3.10 | 3.11-blue.svg" alt="Build Badge">
   <img src="https://github.com/gdcc/python-dvuploader/actions/workflows/test.yml/badge.svg" alt="Build Badge">
 </h1>
 
@@ -81,7 +81,7 @@ dvuploader my_file.txt my_other_file.txt \
 
 #### Using a config file
 
-Alternatively, you can also supply a `config` file that contains all necessary informations for the uploader. The `config` file is a JSON/YAML file that contains the following keys:
+Alternatively, you can also supply a `config` file that contains all necessary information for the uploader. The `config` file is a JSON/YAML file that contains the following keys:
 
 * `persistent_id`: Persistent identifier of the dataset to upload to.
 * `dataverse_url`: URL of the Dataverse instance.
@@ -113,4 +113,49 @@ The `config` file can then be used as follows:
 
 ```bash
 dvuploader --config-path config.yml
+```
+
+## Development
+
+To install the development dependencies, run the following command:
+
+```bash
+pip install poetry
+poetry install --with test
+```
+
+### Running tests locally
+
+In order to test the DVUploader, you need to have a Dataverse instance running. You can start a local Dataverse instance by following these steps:
+
+**1. Start the Dataverse instance**
+
+```bash
+docker compose \
+    -f ./docker/docker-compose-base.yml \
+    --env-file local-test.env \
+    up -d
+```
+
+**2. Set up the environment variables**
+
+```bash
+export BASE_URL=http://localhost:8080
+export $(grep "API_TOKEN" "dv/bootstrap.exposed.env")
+export DVUPLOADER_TESTING=true
+```
+
+**3. Run the test(s) with pytest**
+
+```bash
+python -m pytest -v
+```
+
+### Linting
+
+This repository uses `ruff` to lint the code and `codespell` to check for spelling mistakes. You can run the linters with the following command:
+
+```bash
+python -m ruff
+python -m codespell --check-filenames
 ```

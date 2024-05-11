@@ -1,10 +1,7 @@
-from urllib.parse import urljoin
-import aiohttp
+import httpx
 import pytest
 from rich.progress import Progress
 from dvuploader.directupload import (
-    UPLOAD_ENDPOINT,
-    REPLACE_ENDPOINT,
     _add_files_to_ds,
     _validate_ticket_response,
 )
@@ -13,17 +10,24 @@ from dvuploader.file import File
 
 
 class Test_AddFileToDs:
-    # Should successfully add a file to a Dataverse dataset with a valid file path
+    # Should successfully add files to a Dataverse dataset with a valid file path
     @pytest.mark.asyncio
-    async def test_successfully_add_file_with_valid_filepath(self, mocker):
+    async def test_successfully_add_replace_file_with_valid_filepath(self, httpx_mock):
         # Mock the session.post method to return a response with status code 200
-        mock_post = mocker.patch("aiohttp.ClientSession.post")
-        mock_post.return_value.__aenter__.return_value.status = 200
+        httpx_mock.add_response(
+            method="post",
+            url="https://example.com/api/datasets/:persistentId/addFiles?persistentId=pid",
+        )
+
+        httpx_mock.add_response(
+            method="post",
+            url="https://example.com/api/datasets/:persistentId/replaceFiles?persistentId=pid",
+        )
 
         # Initialize the necessary variables
-        session = aiohttp.ClientSession()
+        session = httpx.AsyncClient()
         dataverse_url = "https://example.com"
-        pid = "persistent_id"
+        pid = "pid"
         fpath = "tests/fixtures/add_dir_files/somefile.txt"
         files = [File(filepath=fpath)]
         progress = Progress()
@@ -37,42 +41,6 @@ class Test_AddFileToDs:
             files=files,
             progress=progress,
             pbar=pbar,
-        )
-
-        # Assert that the response status is 200 and the result is True
-        assert mock_post.called_with(
-            urljoin(dataverse_url, UPLOAD_ENDPOINT + pid), data=mocker.ANY
-        )
-
-    @pytest.mark.asyncio
-    async def test_successfully_replace_file_with_valid_filepath(self, mocker):
-        # Mock the session.post method to return a response with status code 200
-        mock_post = mocker.patch("aiohttp.ClientSession.post")
-        mock_post.return_value.__aenter__.return_value.status = 200
-
-        # Initialize the necessary variables
-        session = aiohttp.ClientSession()
-        dataverse_url = "https://example.com"
-        pid = "persistent_id"
-        fpath = "tests/fixtures/add_dir_files/somefile.txt"
-        files = [File(filepath=fpath, file_id="0")]
-        progress = Progress()
-        pbar = progress.add_task("Uploading", total=1)
-
-        # Invoke the function
-        await _add_files_to_ds(
-            session=session,
-            dataverse_url=dataverse_url,
-            pid=pid,
-            files=files,
-            progress=progress,
-            pbar=pbar,
-        )
-
-        # Assert that the response status is 200 and the result is True
-        assert mock_post.called_with(
-            urljoin(dataverse_url, REPLACE_ENDPOINT + pid),
-            data=mocker.ANY,
         )
 
 
