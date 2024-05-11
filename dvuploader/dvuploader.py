@@ -1,5 +1,4 @@
 import asyncio
-import json
 from urllib.parse import urljoin
 import requests
 import os
@@ -111,7 +110,7 @@ class DVUploader(BaseModel):
             )
 
         if self.verbose:
-            rich.print(f"\n[bold italic white]🚀 Uploading files\n")
+            rich.print("\n[bold italic white]🚀 Uploading files\n")
 
         progress, pbars = self.setup_progress_bars(files=files)
 

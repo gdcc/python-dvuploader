@@ -2,9 +2,8 @@ from io import BytesIO, StringIO
 import os
 from typing import List, Optional, Union, IO
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.fields import PrivateAttr
-import rich
 
 from dvuploader.checksum import Checksum, ChecksumTypes
 
