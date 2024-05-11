@@ -114,3 +114,48 @@ The `config` file can then be used as follows:
 ```bash
 dvuploader --config-path config.yml
 ```
+
+## Development
+
+To install the development dependencies, run the following command:
+
+```bash
+pip install poetry
+poetry install --with test
+```
+
+### Running tests locally
+
+In order to test the DVUploader, you need to have a Dataverse instance running. You can start a local Dataverse instance by following these steps:
+
+**1. Start the Dataverse instance**
+
+```bash
+docker compose \
+    -f ./docker/docker-compose-base.yml \
+    --env-file local-test.env \
+    up -d
+```
+
+**2. Set up the environment variables**
+
+```bash
+export BASE_URL=http://localhost:8080
+export $(grep "API_TOKEN" "dv/bootstrap.exposed.env")
+export DVUPLOADER_TESTING=true
+```
+
+**3. Run the test(s) with pytest**
+
+```bash
+python -m pytest -v
+```
+
+### Linting
+
+This repository uses `ruff` to lint the code and `codespell` to check for spelling mistakes. You can run the linters with the following command:
+
+```bash
+python -m ruff
+python -m codespell --check-filenames
+```
