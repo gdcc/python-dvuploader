@@ -1,6 +1,6 @@
 import os
 import pytest
-import requests
+import httpx
 
 
 @pytest.fixture
@@ -35,7 +35,7 @@ def create_dataset(
         server_url = server_url[:-1]
 
     url = f"{server_url}/api/dataverses/{parent}/datasets"
-    response = requests.post(
+    response = httpx.post(
         url=url,
         headers={"X-Dataverse-key": api_token},
         data=open("./tests/fixtures/create_dataset.json", "rb"),
