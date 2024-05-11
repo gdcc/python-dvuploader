@@ -1,13 +1,10 @@
 import hashlib
 from enum import Enum
-import os
 from typing import IO, Callable
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-from enum import Enum
-import hashlib
 
 
 class ChecksumTypes(Enum):
