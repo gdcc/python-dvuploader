@@ -156,6 +156,6 @@ python -m pytest -v
 This repository uses `ruff` to lint the code and `codespell` to check for spelling mistakes. You can run the linters with the following command:
 
 ```bash
-python -m ruff
+python -m ruff check
 python -m codespell --check-filenames
 ```
