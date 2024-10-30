@@ -204,7 +204,7 @@ async def _request_ticket(
         size=file_size,
     )
 
-    response = await session.get(url)
+    response = await session.get(url, timeout=None)
     response.raise_for_status()
 
     return response.json()["data"]
