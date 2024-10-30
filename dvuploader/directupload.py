@@ -6,6 +6,8 @@ import os
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin
 import aiofiles
+from typing import AsyncGenerator
+from rich.progress import Progress, TaskID
 
 from dvuploader.file import File
 from dvuploader.utils import build_url
@@ -240,12 +242,18 @@ async def _upload_singlepart(
     headers = {
         "X-Dataverse-key": api_token,
         "x-amz-tagging": "dv-state=temp",
+        "Content-length": str(file._size),
     }
+
     storage_identifier = ticket["storageIdentifier"]
     params = {
         "headers": headers,
         "url": ticket["url"],
-        "files": {"": file.handler},
+        "content": upload_bytes(
+            file=file.handler,
+            progress=progress,
+            pbar=pbar
+        ),
     }
 
     response = await session.put(**params)
@@ -367,14 +375,13 @@ async def _chunked_upload(
                 session=session,
                 url=next(urls),
                 file=BytesIO(chunk),
+                progress=progress,
+                pbar=pbar,
             )
         )
 
-        progress.update(pbar, advance=len(chunk))
-
         while chunk:
             chunk = await f.read(chunk_size)
-            progress.update(pbar, advance=len(chunk))
 
             if not chunk:
                 break
@@ -384,6 +391,8 @@ async def _chunked_upload(
                         session=session,
                         url=next(urls),
                         file=BytesIO(chunk),
+                        progress=progress,
+                        pbar=pbar,
                     )
                 )
 
@@ -404,6 +413,8 @@ async def _upload_chunk(
     session: httpx.AsyncClient,
     url: str,
     file: BytesIO,
+    progress: Progress,
+    pbar: TaskID,
 ):
     """
     Uploads a chunk of data to the specified URL using the provided session.
@@ -421,9 +432,14 @@ async def _upload_chunk(
     if TESTING:
         url = url.replace("localstack", "localhost", 1)
 
+    headers = {
+        "Content-length": str(len(file.getvalue())),
+    }
+
     params = {
+        "headers": headers,
         "url": url,
-        "data": file,
+        "data": upload_bytes(file=file, progress=progress, pbar=pbar),
     }
 
     response = await session.put(**params)
@@ -587,3 +603,26 @@ async def _multipart_json_data_request(
 
     response = await session.post(url, files=files)
     response.raise_for_status()
+
+
+async def upload_bytes(
+    file: BytesIO,
+    progress: Progress,
+    pbar: TaskID,
+) -> AsyncGenerator[bytes, None]:
+    """ Async generator that reads a file in chunks and updates the progress bar.
+
+    Args:
+        file (BytesIO): The file to read.
+        progress (Progress): The progress bar to update.
+        pbar (TaskID): The task ID of the progress bar.
+
+    Yields:
+        bytes: The next chunk of data from the file.
+    """
+    while True:
+        data = file.read(1024 * 1024) # 1MB
+        if not data:
+            break
+        progress.update(pbar, advance=len(data))
+        yield data
