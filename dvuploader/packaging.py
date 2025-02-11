@@ -21,7 +21,7 @@ def distribute_files(dv_files: List[File]):
         maximum_size (int, optional): The maximum size of each package in bytes. Defaults to 2 * 1024**3.
 
     Returns:
-        List[List[File]]: The distributed packages of files.
+        List[File]: The distributed packages of files.
     """
     packages = []
     current_package = []
