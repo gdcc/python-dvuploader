@@ -53,9 +53,9 @@ class File(BaseModel):
 
     _size: int = PrivateAttr(default=0)
 
-    def extract_file_name_hash_file(self):
+    def extract_file_name(self):
         """
-        Extracts the file_name and calculates the hash of the file.
+        Extracts the file name from the file path.
 
         Returns:
             self: The current instance of the class.
@@ -76,8 +76,7 @@ class File(BaseModel):
         if self.file_name is None:
             self.file_name = os.path.basename(self.filepath)
 
-        self.checksum = Checksum.from_file(
-            handler=self.handler,
+        self.checksum = Checksum.from_algo(
             hash_fun=hash_fun,
             hash_algo=hash_algo,
         )
@@ -100,3 +99,13 @@ class File(BaseModel):
             raise FileNotFoundError(f"Filepath {path} does not exist.")
         elif not os.path.isfile(path):
             raise IsADirectoryError(f"Filepath {path} is not a file.")
+
+    def apply_checksum(self):
+        assert self.checksum is not None, "Checksum is not calculated."
+        assert self.checksum._hash_fun is not None, "Checksum hash function is not set."
+
+        self.checksum.apply_checksum()
+
+    def __del__(self):
+        if self.handler is not None:
+            self.handler.close()
