@@ -13,7 +13,7 @@ class TestFile:
             directory_label="",
         )
 
-        file.extract_file_name_hash_file()
+        file.extract_file_name()
 
         # Assert
         assert file.file_name == "somefile.txt"
@@ -29,7 +29,7 @@ class TestFile:
                 directory_label="",
             )
 
-            file.extract_file_name_hash_file()
+            file.extract_file_name()
 
     def test_read_non_file(self):
         # Arrange
@@ -42,4 +42,4 @@ class TestFile:
                 directory_label="",
             )
 
-            file.extract_file_name_hash_file()
+            file.extract_file_name()
