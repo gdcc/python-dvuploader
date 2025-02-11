@@ -1,10 +1,11 @@
 import hashlib
 from enum import Enum
+from types import NoneType
 from typing import IO, Callable
+from pydantic.fields import PrivateAttr
+from typing_extensions import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
-
-
 
 
 class ChecksumTypes(Enum):
@@ -37,19 +38,18 @@ class Checksum(BaseModel):
     )
 
     type: str = Field(..., alias="@type")
-    value: str = Field(..., alias="@value")
+    value: Optional[str] = Field(None, alias="@value")
+    _hash_fun = PrivateAttr(default=None)
 
     @classmethod
-    def from_file(
+    def from_algo(
         cls,
-        handler: IO,
         hash_fun: Callable,
         hash_algo: str,
     ) -> "Checksum":
-        """Takes a file path and returns a checksum object.
+        """Creates a Checksum object from a hash function and algorithm.
 
         Args:
-            handler (IO): The file handler to generate the checksum for.
             hash_fun (Callable): The hash function to use for generating the checksum.
             hash_algo (str): The hash algorithm to use for generating the checksum.
 
@@ -57,15 +57,20 @@ class Checksum(BaseModel):
             Checksum: A Checksum object with type and value fields.
         """
 
-        value = cls._chunk_checksum(handler=handler, hash_fun=hash_fun)
-        return cls(type=hash_algo, value=value)  # type: ignore
+        cls = cls(type=hash_algo, value=None)  # type: ignore
+        cls._hash_fun = hash_fun()
+
+        return cls
+
+    def apply_checksum(self):
+        """Applies the checksum to the file."""
+
+        assert self._hash_fun is not None, "Checksum hash function is not set."
+
+        self.value = self._hash_fun.hexdigest()
 
     @staticmethod
-    def _chunk_checksum(
-        handler: IO,
-        hash_fun: Callable,
-        blocksize=2**20
-    ) -> str:
+    def _chunk_checksum(handler: IO, hash_fun: Callable, blocksize=2**20) -> str:
         """Chunks a file and returns a checksum.
 
         Args:
