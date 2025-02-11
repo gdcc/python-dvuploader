@@ -19,7 +19,7 @@ class TestAddDirectory:
 
         # Act
         files = add_directory(directory)
-        [file.extract_file_name_hash_file() for file in files]
+        [file.extract_file_name() for file in files]
 
         # Assert
         expected_files = [
@@ -33,14 +33,14 @@ class TestAddDirectory:
         assert len(files) == len(expected_files), "Wrong number of files"
 
         for directory_label, file_name in expected_files:
-            assert any(
-                file.file_name == file_name for file in files
-            ), f"File {file_name} not found in files"
+            assert any(file.file_name == file_name for file in files), (
+                f"File {file_name} not found in files"
+            )
 
             file = next(filter(lambda file: file.file_name == file_name, files))
-            assert (
-                file.directory_label == directory_label
-            ), f"File {file_name} has wrong directory label"
+            assert file.directory_label == directory_label, (
+                f"File {file_name} has wrong directory label"
+            )
 
     def test_all_files_added_except_hidden_and_dunder(self):
         # Arrange
@@ -48,7 +48,7 @@ class TestAddDirectory:
 
         # Act
         files = add_directory(directory, ignore=[r"^\.", "__.*__"])
-        [file.extract_file_name_hash_file() for file in files]
+        [file.extract_file_name() for file in files]
 
         # Assert
         expected_files = [
@@ -61,14 +61,14 @@ class TestAddDirectory:
         assert len(files) == len(expected_files), "Wrong number of files"
 
         for directory_label, file_name in expected_files:
-            assert any(
-                file.file_name == file_name for file in files
-            ), f"File {file_name} not found in files"
+            assert any(file.file_name == file_name for file in files), (
+                f"File {file_name} not found in files"
+            )
 
             file = next(filter(lambda file: file.file_name == file_name, files))
-            assert (
-                file.directory_label == directory_label
-            ), f"File {file_name} has wrong directory label"
+            assert file.directory_label == directory_label, (
+                f"File {file_name} has wrong directory label"
+            )
 
 
 class TestBuildUrl:

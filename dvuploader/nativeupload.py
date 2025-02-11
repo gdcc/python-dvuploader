@@ -39,9 +39,11 @@ async def native_upload(
         api_token (str): The API token for the Dataverse repository.
         persistent_id (str): The persistent identifier of the Dataverse dataset.
         n_parallel_uploads (int): The number of parallel uploads to execute.
+        pbars: List of progress bar IDs to track upload progress.
+        progress: Progress object to manage progress bars.
 
     Returns:
-        List[requests.Response]: The list of responses for each file upload.
+        None
     """
 
     _reset_progress(pbars, progress)
@@ -89,7 +91,16 @@ def _validate_upload_responses(
     responses: List[Tuple],
     files: List[File],
 ) -> None:
-    """Validates the responses of the native upload requests."""
+    """
+    Validates the responses of the native upload requests.
+
+    Args:
+        responses (List[Tuple]): List of tuples containing status code and response data.
+        files (List[File]): List of files that were uploaded.
+
+    Returns:
+        None
+    """
 
     for (status, response), file in zip(responses, files):
         if status == 200:
@@ -109,9 +120,10 @@ def _zip_packages(
     Args:
         packages (List[Tuple[int, List[File]]]): The packages to be zipped.
         tmp_dir (str): The temporary directory to store the zip files in.
+        progress (Progress): Progress object to manage progress bars.
 
     Returns:
-        List[File, TaskID]: The list of zip files.
+        List[Tuple[TaskID, File]]: List of tuples containing progress bar ID and File object.
     """
 
     files = []
@@ -120,15 +132,14 @@ def _zip_packages(
         if len(package) == 1:
             file = package[0]
         else:
-            file = File(
-                filepath=zip_files(
-                    files=package,
-                    tmp_dir=tmp_dir,
-                    index=index,
-                ),
+            path = zip_files(
+                files=package,
+                tmp_dir=tmp_dir,
+                index=index,
             )
 
-            file.extract_file_name_hash_file()
+            file = File(filepath=path)
+            file.extract_file_name()
             file.mimeType = "application/zip"
 
         pbar = progress.add_task(
@@ -149,7 +160,8 @@ def _reset_progress(
     Resets the progress bars to zero.
 
     Args:
-        pbars: The progress bars to reset.
+        pbars (List[TaskID]): List of progress bar IDs to reset.
+        progress (Progress): Progress object managing the progress bars.
 
     Returns:
         None
@@ -174,14 +186,16 @@ async def _single_native_upload(
     Uploads a file to a Dataverse repository using the native upload method.
 
     Args:
-        session (httpx.AsyncClient): The aiohttp client session.
+        session (httpx.AsyncClient): The httpx client session.
         file (File): The file to be uploaded.
         persistent_id (str): The persistent identifier of the dataset.
-        pbar: The progress bar object.
-        progress: The progress object.
+        pbar: Progress bar ID for tracking upload progress.
+        progress: Progress object managing the progress bars.
 
     Returns:
-        tuple: A tuple containing the status code and the JSON response from the upload request.
+        tuple: A tuple containing:
+            - int: Status code (200 for success, False for failure)
+            - dict: JSON response from the upload request
     """
 
     if not file.to_replace:
@@ -227,7 +241,15 @@ async def _single_native_upload(
 
 
 def _get_json_data(file: File) -> Dict:
-    """Returns the JSON data for the native upload request."""
+    """
+    Returns the JSON data for the native upload request.
+
+    Args:
+        file (File): The file to create JSON data for.
+
+    Returns:
+        Dict: Dictionary containing file metadata for the upload request.
+    """
     return {
         "description": file.description,
         "directoryLabel": file.directory_label,
@@ -244,15 +266,18 @@ async def _update_metadata(
     api_token: str,
     persistent_id: str,
 ):
-    """Updates the metadata of the given files in a Dataverse repository.
+    """
+    Updates the metadata of the given files in a Dataverse repository.
 
     Args:
-
         session (httpx.AsyncClient): The httpx async client.
         files (List[File]): The files to update the metadata for.
         dataverse_url (str): The URL of the Dataverse repository.
         api_token (str): The API token of the Dataverse repository.
         persistent_id (str): The persistent identifier of the dataset.
+
+    Raises:
+        ValueError: If a file is not found in the Dataverse repository.
     """
 
     file_mapping = _retrieve_file_ids(
@@ -296,7 +321,17 @@ async def _update_single_metadata(
     url: str,
     file: File,
 ) -> None:
-    """Updates the metadata of a single file in a Dataverse repository."""
+    """
+    Updates the metadata of a single file in a Dataverse repository.
+
+    Args:
+        session (httpx.AsyncClient): The httpx async client.
+        url (str): The URL endpoint for updating metadata.
+        file (File): The file to update metadata for.
+
+    Raises:
+        ValueError: If metadata update fails.
+    """
 
     json_data = _get_json_data(file)
 
@@ -329,16 +364,16 @@ def _retrieve_file_ids(
     dataverse_url: str,
     api_token: str,
 ) -> Dict[str, str]:
-    """Retrieves the file IDs of the given files.
+    """
+    Retrieves the file IDs of files in a dataset.
 
     Args:
-        files (List[File]): The files to retrieve the IDs for.
         persistent_id (str): The persistent identifier of the dataset.
         dataverse_url (str): The URL of the Dataverse repository.
         api_token (str): The API token of the Dataverse repository.
 
     Returns:
-        Dict[str, str]: The list of file IDs.
+        Dict[str, str]: Dictionary mapping file paths to their IDs.
     """
 
     # Fetch file metadata
@@ -352,7 +387,15 @@ def _retrieve_file_ids(
 
 
 def _create_file_id_path_mapping(files):
-    """Creates dictionary that maps from directoryLabel + filename to ID"""
+    """
+    Creates dictionary that maps from directoryLabel + filename to ID.
+
+    Args:
+        files: List of file metadata from Dataverse.
+
+    Returns:
+        Dict[str, str]: Dictionary mapping file paths to their IDs.
+    """
     mapping = {}
 
     for file in files:

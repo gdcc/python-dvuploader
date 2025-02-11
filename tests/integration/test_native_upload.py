@@ -157,17 +157,16 @@ class TestNativeUpload:
         assert len(files) == 2
 
         for ex_dir, ex_f in expected:
-
             file = next(file for file in files if file["label"] == ex_f)
 
-            assert (
-                file["label"] == ex_f
-            ), f"File label does not match for file {json.dumps(file)}"
+            assert file["label"] == ex_f, (
+                f"File label does not match for file {json.dumps(file)}"
+            )
 
-            assert (
-                file.get("directoryLabel", "") == ex_dir
-            ), f"Directory label does not match for file {json.dumps(file)}"
+            assert file.get("directoryLabel", "") == ex_dir, (
+                f"Directory label does not match for file {json.dumps(file)}"
+            )
 
-            assert (
-                file["description"] == "This is a test"
-            ), f"Description does not match for file {json.dumps(file)}"
+            assert file["description"] == "This is a test", (
+                f"Description does not match for file {json.dumps(file)}"
+            )

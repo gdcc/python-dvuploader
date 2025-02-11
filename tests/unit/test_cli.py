@@ -14,7 +14,7 @@ class TestParseYAMLConfig:
 
         # Act
         cli_input = _parse_yaml_config(fpath)
-        [file.extract_file_name_hash_file() for file in cli_input.files]
+        [file.extract_file_name() for file in cli_input.files]
 
         # Assert
         expected_files = [

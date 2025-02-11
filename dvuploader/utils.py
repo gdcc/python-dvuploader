@@ -44,9 +44,10 @@ def retrieve_dataset_files(
     """
     Retrieve the files of a specific dataset from a Dataverse repository.
 
-    Parameters:
+    Args:
         dataverse_url (str): The base URL of the Dataverse repository.
         persistent_id (str): The persistent identifier (PID) of the dataset.
+        api_token (str): API token for authentication.
 
     Returns:
         list: A list of files in the dataset.
@@ -76,9 +77,9 @@ def add_directory(
     Recursively adds all files in the specified directory to a list of File objects.
 
     Args:
-        directory (str): The directory path.
+        directory (str): The directory path to scan for files.
         ignore (List[str], optional): A list of regular expressions to ignore certain files or directories. Defaults to [r"^\."].
-        rootDirectoryLabel (str, optional): The label to be added to the directory path of each file. Defaults to "".
+        rootDirectoryLabel (str, optional): The label to be prepended to the directory path of each file. Defaults to "".
 
     Returns:
         List[File]: A list of File objects representing the files in the directory.
@@ -114,14 +115,14 @@ def add_directory(
 
 def _truncate_path(path: pathlib.Path, to_remove: pathlib.Path):
     """
-    Truncate a path by removing a substring from the beginning.
+    Truncate a path by removing a prefix path.
 
     Args:
-        path (str): The path to truncate.
-        to_remove (str): The substring to remove from the beginning of the path.
+        path (pathlib.Path): The full path to truncate.
+        to_remove (pathlib.Path): The prefix path to remove.
 
     Returns:
-        str: The truncated path.
+        str: The truncated path as a string, or empty string if nothing remains after truncation.
     """
 
     parts = path.parts[len(to_remove.parts) :]
@@ -134,14 +135,14 @@ def _truncate_path(path: pathlib.Path, to_remove: pathlib.Path):
 
 def part_is_ignored(part, ignore):
     """
-    Check if a part should be ignored based on a list of patterns.
+    Check if a path part should be ignored based on a list of regex patterns.
 
     Args:
-        part (str): The part to check.
-        ignore (list): A list of patterns to match against.
+        part (str): The path part to check.
+        ignore (List[str]): A list of regex patterns to match against.
 
     Returns:
-        bool: True if the part should be ignored, False otherwise.
+        bool: True if the part matches any ignore pattern, False otherwise.
     """
     for pattern in ignore:
         if re.match(pattern, part):
@@ -154,14 +155,14 @@ def setup_pbar(
     progress: Progress,
 ) -> int:
     """
-    Set up a progress bar for a file.
+    Set up a progress bar for tracking file upload progress.
 
     Args:
-        fpath (str): The path to the file.
-        progress (Progress): The progress bar object.
+        file (File): The File object containing file information.
+        progress (Progress): The rich Progress instance for displaying progress.
 
     Returns:
-        int: The task ID of the progress bar.
+        int: The task ID for the created progress bar.
     """
 
     file_size = file._size

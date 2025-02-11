@@ -1,10 +1,10 @@
 import hashlib
 from enum import Enum
 from typing import IO, Callable
+from pydantic.fields import PrivateAttr
+from typing_extensions import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
-
-
 
 
 class ChecksumTypes(Enum):
@@ -24,11 +24,15 @@ class ChecksumTypes(Enum):
 
 
 class Checksum(BaseModel):
-    """Checksum class represents a checksum object with type and value fields.
+    """Class for calculating and storing file checksums.
+
+    This class handles checksum calculation and storage for files being uploaded to Dataverse.
+    It supports multiple hash algorithms through the ChecksumTypes enum.
 
     Attributes:
-        type (str): The type of the checksum.
-        value (str): The value of the checksum.
+        type (str): The type of checksum algorithm being used (e.g. "SHA-1", "MD5")
+        value (Optional[str]): The calculated checksum value, or None if not yet calculated
+        _hash_fun (PrivateAttr): Internal hash function instance used for calculation
     """
 
     model_config = ConfigDict(
@@ -37,44 +41,58 @@ class Checksum(BaseModel):
     )
 
     type: str = Field(..., alias="@type")
-    value: str = Field(..., alias="@value")
+    value: Optional[str] = Field(None, alias="@value")
+    _hash_fun = PrivateAttr(default=None)
 
     @classmethod
-    def from_file(
+    def from_algo(
         cls,
-        handler: IO,
         hash_fun: Callable,
         hash_algo: str,
     ) -> "Checksum":
-        """Takes a file path and returns a checksum object.
+        """Creates a new Checksum instance configured for a specific hash algorithm.
 
         Args:
-            handler (IO): The file handler to generate the checksum for.
-            hash_fun (Callable): The hash function to use for generating the checksum.
-            hash_algo (str): The hash algorithm to use for generating the checksum.
+            hash_fun (Callable): Hash function constructor (e.g. hashlib.sha1)
+            hash_algo (str): Name of the hash algorithm (e.g. "SHA-1")
 
         Returns:
-            Checksum: A Checksum object with type and value fields.
+            Checksum: A new Checksum instance ready for calculating checksums
         """
 
-        value = cls._chunk_checksum(handler=handler, hash_fun=hash_fun)
-        return cls(type=hash_algo, value=value)  # type: ignore
+        cls = cls(type=hash_algo, value=None)  # type: ignore
+        cls._hash_fun = hash_fun()
+
+        return cls
+
+    def apply_checksum(self):
+        """Finalizes and stores the calculated checksum value.
+
+        This should be called after all data has been processed through the hash function.
+        The resulting checksum is stored in the value attribute.
+
+        Raises:
+            AssertionError: If the hash function has not been initialized
+        """
+
+        assert self._hash_fun is not None, "Checksum hash function is not set."
+
+        self.value = self._hash_fun.hexdigest()
 
     @staticmethod
-    def _chunk_checksum(
-        handler: IO,
-        hash_fun: Callable,
-        blocksize=2**20
-    ) -> str:
-        """Chunks a file and returns a checksum.
+    def _chunk_checksum(handler: IO, hash_fun: Callable, blocksize=2**20) -> str:
+        """Calculates a file's checksum by processing it in chunks.
 
         Args:
-            fpath (str): The file path to generate the checksum for.
-            hash_fun (Callable): The hash function to use for generating the checksum.
-            blocksize (int): The block size to use for reading the file.
+            handler (IO): File-like object to read data from
+            hash_fun (Callable): Hash function constructor to use
+            blocksize (int, optional): Size of chunks to read. Defaults to 1MB (2**20)
 
         Returns:
-            str: A string representing the checksum of the file.
+            str: Hexadecimal string representation of the calculated checksum
+
+        Note:
+            This method resets the file position to the start after reading
         """
         m = hash_fun()
         while True:
