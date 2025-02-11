@@ -6,7 +6,7 @@ import os
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin
 import aiofiles
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Callable
 from rich.progress import Progress, TaskID
 
 from dvuploader.file import File
@@ -235,6 +235,7 @@ async def _upload_singlepart(
                           and the storage identifier of the uploaded file.
     """
     assert "url" in ticket, "Couldn't find 'url'"
+    assert file.checksum is not None, "Checksum is required for singlepart uploads"
 
     if TESTING:
         ticket["url"] = ticket["url"].replace("localstack", "localhost", 1)
@@ -252,12 +253,15 @@ async def _upload_singlepart(
         "content": upload_bytes(
             file=file.handler,
             progress=progress,
-            pbar=pbar
+            pbar=pbar,
+            hash_func=file.checksum._hash_fun,
         ),
     }
 
     response = await session.put(**params)
     response.raise_for_status()
+
+    file.apply_checksum()
 
     if response.status_code == 200:
         progress.update(pbar, advance=file._size)
@@ -332,6 +336,9 @@ async def _upload_multipart(
         api_token=api_token,
     )
 
+    file.apply_checksum()
+    print(file.checksum)
+
     return True, storage_identifier
 
 
@@ -357,6 +364,8 @@ async def _chunked_upload(
     Returns:
         List[str]: A list of ETags returned by the server for each uploaded chunk.
     """
+    assert file.checksum is not None, "Checksum is required for multipart uploads"
+
     e_tags = []
 
     if not os.path.exists(file.filepath):
@@ -377,6 +386,7 @@ async def _chunked_upload(
                 file=BytesIO(chunk),
                 progress=progress,
                 pbar=pbar,
+                hash_func=file.checksum._hash_fun,
             )
         )
 
@@ -393,6 +403,7 @@ async def _chunked_upload(
                         file=BytesIO(chunk),
                         progress=progress,
                         pbar=pbar,
+                        hash_func=file.checksum._hash_fun,
                     )
                 )
 
@@ -415,6 +426,7 @@ async def _upload_chunk(
     file: BytesIO,
     progress: Progress,
     pbar: TaskID,
+    hash_func,
 ):
     """
     Uploads a chunk of data to the specified URL using the provided session.
@@ -439,7 +451,12 @@ async def _upload_chunk(
     params = {
         "headers": headers,
         "url": url,
-        "data": upload_bytes(file=file, progress=progress, pbar=pbar),
+        "data": upload_bytes(
+            file=file,
+            progress=progress,
+            pbar=pbar,
+            hash_func=hash_func,
+        ),
     }
 
     response = await session.put(**params)
@@ -602,15 +619,23 @@ async def _multipart_json_data_request(
     }
 
     response = await session.post(url, files=files)
-    response.raise_for_status()
+
+    if not response.is_success:
+        raise httpx.HTTPStatusError(
+            f"Failed to register files: {response.text}",
+            request=response.request,
+            response=response,
+        )
+
 
 
 async def upload_bytes(
     file: BytesIO,
     progress: Progress,
     pbar: TaskID,
+    hash_func,
 ) -> AsyncGenerator[bytes, None]:
-    """ Async generator that reads a file in chunks and updates the progress bar.
+    """Async generator that reads a file in chunks and updates the progress bar.
 
     Args:
         file (BytesIO): The file to read.
@@ -621,8 +646,16 @@ async def upload_bytes(
         bytes: The next chunk of data from the file.
     """
     while True:
-        data = file.read(1024 * 1024) # 1MB
+        data = file.read(1024 * 1024)  # 1MB
+
+
         if not data:
             break
+
+        # Update the hash function with the data
+        hash_func.update(data)
+
+        # Update the progress bar
         progress.update(pbar, advance=len(data))
+
         yield data
