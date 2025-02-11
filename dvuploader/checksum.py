@@ -1,6 +1,5 @@
 import hashlib
 from enum import Enum
-from types import NoneType
 from typing import IO, Callable
 from pydantic.fields import PrivateAttr
 from typing_extensions import Optional

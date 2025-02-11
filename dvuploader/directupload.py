@@ -6,7 +6,7 @@ import os
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin
 import aiofiles
-from typing import AsyncGenerator, Callable
+from typing import AsyncGenerator
 from rich.progress import Progress, TaskID
 
 from dvuploader.file import File
@@ -16,9 +16,9 @@ TESTING = bool(os.environ.get("DVUPLOADER_TESTING", False))
 MAX_FILE_DISPLAY = int(os.environ.get("DVUPLOADER_MAX_FILE_DISPLAY", 50))
 MAX_RETRIES = int(os.environ.get("DVUPLOADER_MAX_RETRIES", 10))
 
-assert isinstance(
-    MAX_FILE_DISPLAY, int
-), "DVUPLOADER_MAX_FILE_DISPLAY must be an integer"
+assert isinstance(MAX_FILE_DISPLAY, int), (
+    "DVUPLOADER_MAX_FILE_DISPLAY must be an integer"
+)
 
 assert isinstance(MAX_RETRIES, int), "DVUPLOADER_MAX_RETRIES must be an integer"
 
@@ -628,7 +628,6 @@ async def _multipart_json_data_request(
         )
 
 
-
 async def upload_bytes(
     file: BytesIO,
     progress: Progress,
@@ -647,7 +646,6 @@ async def upload_bytes(
     """
     while True:
         data = file.read(1024 * 1024)  # 1MB
-
 
         if not data:
             break

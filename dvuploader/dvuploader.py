@@ -6,7 +6,7 @@ import rich
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel
-from rich.progress import Progress, TaskID
+from rich.progress import Progress
 from rich.table import Table
 from rich.console import Console
 from rich.panel import Panel
@@ -232,7 +232,6 @@ class DVUploader(BaseModel):
                 f"\nSkipping {len(to_skip)} existing files. Use `replace_existing=True` to replace them.\n"
             )
             self.files = [file for file in self.files if not file.to_replace]
-
 
         if over_threshold:
             table = Table(title="[bold white]🔎 Checking dataset files")
