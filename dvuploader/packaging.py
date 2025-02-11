@@ -12,16 +12,17 @@ MAXIMUM_PACKAGE_SIZE = int(
 )
 
 
-def distribute_files(dv_files: List[File]):
+def distribute_files(dv_files: List[File]) -> List[Tuple[int, List[File]]]:
     """
     Distributes a list of files into packages based on their sizes.
 
     Args:
         dv_files (List[File]): The list of files to be distributed.
-        maximum_size (int, optional): The maximum size of each package in bytes. Defaults to 2 * 1024**3.
 
     Returns:
-        List[File]: The distributed packages of files.
+        List[Tuple[int, List[File]]]: A list of tuples containing package index and list of files.
+            Files are grouped into packages that don't exceed MAXIMUM_PACKAGE_SIZE.
+            Files larger than MAXIMUM_PACKAGE_SIZE are placed in their own package.
     """
     packages = []
     current_package = []
@@ -56,16 +57,17 @@ def distribute_files(dv_files: List[File]):
 def _append_and_reset(
     package: Tuple[int, List[File]],
     packages: List[Tuple[int, List[File]]],
-):
+) -> Tuple[List[File], int, int]:
     """
-    Appends the given package to the packages list and resets the package list.
+    Appends the given package to the packages list and resets the package state.
 
     Args:
-        package (List[File]): The package to be appended.
-        packages (List[List[File]]): The list of packages.
+        package (Tuple[int, List[File]]): Tuple containing package index and list of files.
+        packages (List[Tuple[int, List[File]]]): The list of all packages.
 
     Returns:
-        Tuple[List[File], int]: The updated package list and the count of packages.
+        Tuple[List[File], int, int]: Empty list for new package, reset size counter (0),
+            and incremented package index.
     """
     packages.append(package)
     return [], 0, package[0] + 1
@@ -75,18 +77,20 @@ def zip_files(
     files: List[File],
     tmp_dir: str,
     index: int,
-):
+) -> str:
     """
-    Zips the given files into a zip file.
+    Creates a zip file containing the given files.
 
     Args:
         files (List[File]): The files to be zipped.
-        tmp_dir (str): The temporary directory to store the zip file in.
+        tmp_dir (str): The temporary directory to store the zip file.
+        index (int): Index used in the zip filename.
 
     Returns:
-        str: The path to the zip file.
+        str: The full path to the created zip file.
     """
-    path = os.path.join(tmp_dir, f"package_{index}.zip")
+    name = f"package_{index}.zip"
+    path = os.path.join(tmp_dir, name)
 
     with zipfile.ZipFile(path, "w") as zip_file:
         for file in files:
@@ -98,15 +102,16 @@ def zip_files(
     return path
 
 
-def _create_arcname(file: File):
+def _create_arcname(file: File) -> str:
     """
-    Creates the arcname for the given file.
+    Creates the archive name (path within zip) for the given file.
 
     Args:
-        file (File): The file to create the arcname for.
+        file (File): The file to create the archive name for.
 
     Returns:
-        str: The arcname for the given file.
+        str: The archive name - either just the filename, or directory_label/filename
+            if directory_label is set.
     """
     if file.directory_label is not None:
         return os.path.join(file.directory_label, file.file_name)  # type: ignore

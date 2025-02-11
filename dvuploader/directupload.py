@@ -43,11 +43,11 @@ async def direct_upload(
     Args:
         files (List[File]): A list of File objects to be uploaded.
         dataverse_url (str): The URL of the Dataverse repository.
-        api_token (str): The API token for the Dataverse repository.
-        persistent_id (str): The persistent identifier of the Dataverse dataset.
-        progress: The progress object to track the upload progress.
-        pbars: A list of progress bars to display the upload progress for each file.
-        n_parallel_uploads (int): The number of parallel uploads to perform.
+        api_token (str): The API token for authentication.
+        persistent_id (str): The persistent identifier of the dataset.
+        progress: Progress object to track upload progress.
+        pbars: List of progress bars for each file.
+        n_parallel_uploads (int): Number of concurrent uploads to perform.
 
     Returns:
         None
@@ -120,21 +120,21 @@ async def _upload_to_store(
     leave_bar: bool,
 ):
     """
-    Uploads a file to a Dataverse collection using direct upload.
+    Upload a file to Dataverse storage using direct upload.
 
     Args:
-        session (httpx.AsyncClient): The httpx async client session.
-        file (File): The file object to upload.
-        persistent_id (str): The persistent identifier of the Dataverse dataset to upload to.
-        dataverse_url (str): The URL of the Dataverse instance to upload to.
-        api_token (str): The API token to use for authentication.
-        pbar: The progress bar object.
-        progress: The progress object.
-        delay (float): The delay in seconds before starting the upload.
-        leave_bar (bool): A flag indicating whether to keep the progress bar visible after the upload is complete.
+        session (httpx.AsyncClient): Async HTTP client session.
+        file (File): File object to upload.
+        persistent_id (str): Dataset persistent identifier.
+        dataverse_url (str): Dataverse instance URL.
+        api_token (str): API token for authentication.
+        pbar: Progress bar for this file.
+        progress: Progress tracking object.
+        delay (float): Delay before starting upload in seconds.
+        leave_bar (bool): Whether to keep progress bar after completion.
 
     Returns:
-        tuple: A tuple containing the upload status (bool) and the file object.
+        tuple: (success: bool, file: File) indicating upload status and file object.
     """
 
     await asyncio.sleep(delay)
@@ -181,21 +181,18 @@ async def _request_ticket(
     persistent_id: str,
     file_size: int,
 ) -> Dict:
-    """Requests a ticket from a Dataverse collection to perform an upload.
-
-    This method will send a request to the Dataverse API to obtain a ticket
-    for performing a direct upload to an S3 bucket. The ticket contains a URL
-    and storageIdentifier that will be used later to perform the upload.
+    """
+    Request an upload ticket from Dataverse.
 
     Args:
-        session (httpx.AsyncClient): The httpx async client session to use for the request.
-        dataverse_url (str): The URL of the Dataverse installation.
-        api_token (str): The API token used to access the dataset.
-        persistent_id (str): The persistent identifier of the dataset of interest.
-        file_size (int): The size of the file to be uploaded.
+        session (httpx.AsyncClient): Async HTTP client session.
+        dataverse_url (str): Dataverse instance URL.
+        api_token (str): API token for authentication.
+        persistent_id (str): Dataset persistent identifier.
+        file_size (int): Size of file to upload in bytes.
 
     Returns:
-        Dict: The response from the Dataverse API, containing the ticket information.
+        Dict: Upload ticket containing URL and storage identifier.
     """
     url = build_url(
         endpoint=urljoin(dataverse_url, TICKET_ENDPOINT),
@@ -220,19 +217,19 @@ async def _upload_singlepart(
     leave_bar: bool,
 ) -> Tuple[bool, str]:
     """
-    Uploads a single part of a file to a remote server using HTTP PUT method.
+    Upload a file in a single request.
 
     Args:
-        session (httpx.AsyncClient): The httpx async client session used for the upload.
-        ticket (Dict): A dictionary containing the response from the server.
-        filepath (str): The path to the file to be uploaded.
-        pbar (tqdm): A progress bar object to track the upload progress.
-        progress: The progress object used to update the progress bar.
-        leave_bar (bool): A flag indicating whether to keep the progress bar visible after the upload is complete.
+        session (httpx.AsyncClient): Async HTTP client session.
+        ticket (Dict): Upload ticket from Dataverse.
+        file (File): File object to upload.
+        pbar: Progress bar for this file.
+        progress: Progress tracking object.
+        api_token (str): API token for authentication.
+        leave_bar (bool): Whether to keep progress bar after completion.
 
     Returns:
-        Tuple[bool, str]: A tuple containing the status of the upload (True for success, False for failure)
-                          and the storage identifier of the uploaded file.
+        Tuple[bool, str]: (success status, storage identifier)
     """
     assert "url" in ticket, "Couldn't find 'url'"
     assert file.checksum is not None, "Checksum is required for singlepart uploads"
@@ -251,7 +248,7 @@ async def _upload_singlepart(
         "headers": headers,
         "url": ticket["url"],
         "content": upload_bytes(
-            file=file.handler,
+            file=file.handler,  # type: ignore
             progress=progress,
             pbar=pbar,
             hash_func=file.checksum._hash_fun,
@@ -284,18 +281,19 @@ async def _upload_multipart(
     api_token: str,
 ):
     """
-    Uploads a file to Dataverse using multipart upload.
+    Upload a file using multipart upload.
 
     Args:
-        session (httpx.AsyncClient): The httpx async client session.
-        response (Dict): The response from the Dataverse API containing the upload ticket information.
-        file (File): The file object to be uploaded.
-        dataverse_url (str): The URL of the Dataverse instance.
-        pbar (tqdm): A progress bar to track the upload progress.
-        progress: The progress callback function.
+        session (httpx.AsyncClient): Async HTTP client session.
+        response (Dict): Upload ticket response from Dataverse.
+        file (File): File object to upload.
+        dataverse_url (str): Dataverse instance URL.
+        pbar: Progress bar for this file.
+        progress: Progress tracking object.
+        api_token (str): API token for authentication.
 
     Returns:
-        Tuple[bool, str]: A tuple containing a boolean indicating the success of the upload and the storage identifier for the uploaded file.
+        Tuple[bool, str]: (success status, storage identifier)
     """
 
     _validate_ticket_response(response)
@@ -351,18 +349,18 @@ async def _chunked_upload(
     progress,
 ):
     """
-    Uploads a file in chunks to multiple URLs using the provided session.
+    Upload a file in chunks.
 
     Args:
-        file (File): The file object to upload.
-        session (httpx.AsyncClient): The httpx async client session to use for the upload.
-        urls: An iterable of URLs to upload the file chunks to.
-        chunk_size (int): The size of each chunk in bytes.
-        pbar (tqdm): The progress bar to update during the upload.
-        progress: The progress object to track the upload progress.
+        file (File): File object to upload.
+        session (httpx.AsyncClient): Async HTTP client session.
+        urls: Iterator of upload URLs for each chunk.
+        chunk_size (int): Size of each chunk in bytes.
+        pbar: Progress bar for this file.
+        progress: Progress tracking object.
 
     Returns:
-        List[str]: A list of ETags returned by the server for each uploaded chunk.
+        List[str]: ETags returned by server for each chunk.
     """
     assert file.checksum is not None, "Checksum is required for multipart uploads"
 
@@ -411,7 +409,15 @@ async def _chunked_upload(
 
 
 def _validate_ticket_response(response: Dict) -> None:
-    """Validate the response from the ticket request to include all necessary fields."""
+    """
+    Validate that upload ticket response contains required fields.
+
+    Args:
+        response (Dict): Upload ticket response to validate.
+
+    Raises:
+        AssertionError: If required fields are missing.
+    """
 
     assert "abort" in response, "Couldn't find 'abort'"
     assert "complete" in response, "Couldn't find 'complete'"
@@ -429,16 +435,18 @@ async def _upload_chunk(
     hash_func,
 ):
     """
-    Uploads a chunk of data to the specified URL using the provided session.
+    Upload a single chunk of data.
 
     Args:
-        session (httpx.AsyncClient): The session to use for the upload.
-        url (str): The URL to upload the chunk to.
-        file (ChunkStream): The chunk of data to upload.
-        pbar: The progress bar to update during the upload.
+        session (httpx.AsyncClient): Async HTTP client session.
+        url (str): URL to upload chunk to.
+        file (BytesIO): Chunk data to upload.
+        progress (Progress): Progress tracking object.
+        pbar (TaskID): Progress bar task ID.
+        hash_func: Hash function for checksum.
 
     Returns:
-        str: The ETag value of the uploaded chunk.
+        str: ETag from server response.
     """
 
     if TESTING:
@@ -472,16 +480,15 @@ async def _complete_upload(
     e_tags: List[Optional[str]],
     api_token: str,
 ) -> None:
-    """Completes the upload by sending the E tags
+    """
+    Complete a multipart upload by sending ETags.
 
     Args:
-        session (httpx.AsyncClient): The aiohttp client session.
-        url (str): The URL to send the PUT request to.
-        dataverse_url (str): The base URL of the Dataverse instance.
-        e_tags (List[str]): The list of E tags to send in the payload.
-
-    Raises:
-        aiohttp.ClientResponseError: If the response status code is not successful.
+        session (httpx.AsyncClient): Async HTTP client session.
+        url (str): URL to send completion request to.
+        dataverse_url (str): Dataverse instance URL.
+        e_tags (List[str]): List of ETags from uploaded chunks.
+        api_token (str): API token for authentication.
     """
 
     payload = json.dumps({str(index + 1): e_tag for index, e_tag in enumerate(e_tags)})
@@ -505,16 +512,13 @@ async def _abort_upload(
     api_token: str,
 ):
     """
-    Aborts an ongoing upload by sending a DELETE request to the specified URL.
+    Abort an in-progress multipart upload.
 
     Args:
-        session (httpx.AsyncClient): The httpx async client session.
-        url (str): The URL to send the DELETE request to.
-        dataverse_url (str): The base URL of the Dataverse instance.
-        api_token (str): The API token to use for the request.
-
-    Raises:
-        aiohttp.ClientResponseError: If the DELETE request fails.
+        session (httpx.AsyncClient): Async HTTP client session.
+        url (str): URL to send abort request to.
+        dataverse_url (str): Dataverse instance URL.
+        api_token (str): API token for authentication.
     """
 
     headers = {"X-Dataverse-key": api_token}
@@ -533,16 +537,15 @@ async def _add_files_to_ds(
     pbar,
 ) -> None:
     """
-    Adds a file to a Dataverse dataset.
+    Register uploaded files with the dataset.
 
     Args:
-        session (httpx.AsyncClient): The httpx async client session.
-        dataverse_url (str): The URL of the Dataverse instance.
-        pid (str): The persistent identifier of the dataset.
-        file (File): The file to be added.
-
-    Returns:
-        bool: True if the file was added successfully, False otherwise.
+        session (httpx.AsyncClient): Async HTTP client session.
+        dataverse_url (str): Dataverse instance URL.
+        pid (str): Dataset persistent identifier.
+        files (List[File]): List of uploaded files to register.
+        progress: Progress tracking object.
+        pbar: Progress bar for registration.
     """
 
     novel_url = urljoin(dataverse_url, UPLOAD_ENDPOINT + pid)
@@ -568,13 +571,14 @@ async def _add_files_to_ds(
 
 def _prepare_registration(files: List[File], use_replace: bool) -> List[Dict]:
     """
-    Prepares the files for registration at the Dataverse instance.
+    Prepare file metadata for registration.
 
     Args:
-        files (List[File]): The list of files to prepare.
+        files (List[File]): List of files to prepare metadata for.
+        use_replace (bool): Whether these are replacement files.
 
     Returns:
-        List[Dict]: The list of files prepared for registration.
+        List[Dict]: List of file metadata dictionaries.
     """
 
     exclude = {"to_replace"} if use_replace else {"to_replace", "file_id"}
@@ -596,18 +600,15 @@ async def _multipart_json_data_request(
     session: httpx.AsyncClient,
 ):
     """
-    Sends a multipart/form-data POST request with JSON data to the specified URL using the provided session.
+    Send multipart form request with JSON data.
 
     Args:
-        json_data (str): The JSON data to be sent in the request body.
-        url (str): The URL to send the request to.
-        session (httpx.AsyncClient): The httpx async client session to use for the request.
+        json_data (List[Dict]): JSON data to send.
+        url (str): URL to send request to.
+        session (httpx.AsyncClient): Async HTTP client session.
 
     Raises:
-        httpx.HTTPStatusError: If the response status code is not successful.
-
-    Returns:
-        None
+        httpx.HTTPStatusError: If request fails.
     """
 
     files = {
@@ -634,15 +635,17 @@ async def upload_bytes(
     pbar: TaskID,
     hash_func,
 ) -> AsyncGenerator[bytes, None]:
-    """Async generator that reads a file in chunks and updates the progress bar.
+    """
+    Generate chunks of file data for upload.
 
     Args:
-        file (BytesIO): The file to read.
-        progress (Progress): The progress bar to update.
-        pbar (TaskID): The task ID of the progress bar.
+        file (BytesIO): File to read chunks from.
+        progress (Progress): Progress tracking object.
+        pbar (TaskID): Progress bar task ID.
+        hash_func: Hash function for checksum.
 
     Yields:
-        bytes: The next chunk of data from the file.
+        bytes: Next chunk of file data.
     """
     while True:
         data = file.read(1024 * 1024)  # 1MB

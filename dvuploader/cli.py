@@ -7,6 +7,17 @@ from dvuploader import DVUploader, File
 
 
 class CliInput(BaseModel):
+    """
+    Model for CLI input parameters.
+
+    Attributes:
+        api_token (str): API token for authentication with Dataverse
+        dataverse_url (str): URL of the Dataverse instance
+        persistent_id (str): Persistent identifier of the dataset
+        files (List[File]): List of files to upload
+        n_jobs (int): Number of parallel upload jobs to run (default: 1)
+    """
+
     api_token: str
     dataverse_url: str
     persistent_id: str
@@ -19,19 +30,17 @@ app = typer.Typer()
 
 def _parse_yaml_config(path: str) -> CliInput:
     """
-    Parses a configuration file and returns a Class instance
-    containing a list of File objects, a persistent ID, a Dataverse URL,
-    and an API token.
+    Parse a YAML/JSON configuration file into a CliInput object.
 
     Args:
-        path (str): Path to a JSON/YAML file containing specifications for the files to upload.
+        path (str): Path to a YAML/JSON configuration file containing upload specifications
 
     Returns:
-        CliInput: Class instance containing a list of File objects, a persistent ID,
-                  a Dataverse URL, and an API token.
+        CliInput: Object containing upload configuration parameters
 
     Raises:
-        ValueError: If the configuration file is invalid.
+        yaml.YAMLError: If the YAML/JSON file is malformed
+        ValidationError: If the configuration data does not match the CliInput model
     """
     return CliInput(**yaml.safe_load(open(path)))  # type: ignore
 
@@ -44,18 +53,20 @@ def _validate_inputs(
     config_path: Optional[str],
 ) -> None:
     """
-    Validates the inputs for the dvuploader command.
+    Validate CLI input parameters.
+
+    Checks for valid combinations of configuration file and command line parameters.
 
     Args:
-        filepaths (List[str]): List of filepaths to be uploaded.
-        pid (str): Persistent identifier of the dataset.
-        dataverse_url (str): URL of the Dataverse instance.
-        api_token (str): API token for authentication.
-        config_path (Optional[str]): Path to the configuration file.
+        filepaths (List[str]): List of files to upload
+        pid (str): Persistent identifier of the dataset
+        dataverse_url (str): URL of the Dataverse instance
+        api_token (str): API token for authentication
+        config_path (Optional[str]): Path to configuration file
 
     Raises:
-        typer.BadParameter: If both a configuration file and a list of filepaths are specified.
-        typer.BadParameter: If neither a configuration file nor metadata parameters are specified.
+        typer.BadParameter: If both config file and filepaths are specified
+        typer.BadParameter: If neither config file nor required parameters are provided
     """
     if config_path is not None and len(filepaths) > 0:
         raise typer.BadParameter(
@@ -97,25 +108,39 @@ def main(
     ),
     config_path: Optional[str] = typer.Option(
         default=None,
-        help="Path to a JSON/YAML file containing specifications for the files to upload. Defaults to None.",
+        help="Path to a JSON/YAML file containing specifications for the files to upload.",
     ),
     n_jobs: int = typer.Option(
         default=1,
-        help="The number of parallel jobs to run. Defaults to -1.",
+        help="Number of parallel upload jobs to run.",
     ),
 ):
     """
-    Uploads files to a Dataverse repository.
+    Upload files to a Dataverse repository.
 
-    Args:
-        filepaths (List[str]): A list of filepaths to upload.
-        pid (str): The persistent identifier of the Dataverse dataset.
-        api_token (str): The API token for the Dataverse repository.
-        dataverse_url (str): The URL of the Dataverse repository.
-        config_path (Optional[str]): Path to a JSON/YAML file containing specifications for the files to upload. Defaults to None.
-        n_jobs (int): The number of parallel jobs to run. Defaults to -1.
+    Files can be specified either directly via command line arguments or through a
+    configuration file. The configuration file can be either YAML or JSON format.
+
+    If using command line arguments, you must specify:
+    - One or more filepaths to upload
+    - The dataset's persistent identifier
+    - A valid API token
+    - The Dataverse repository URL
+
+    If using a configuration file, it should contain:
+    - api_token: API token for authentication
+    - dataverse_url: URL of the Dataverse instance
+    - persistent_id: Dataset persistent identifier
+    - files: List of file specifications
+    - n_jobs: (optional) Number of parallel upload jobs
+
+    Examples:
+        Upload files via command line:
+        $ dvuploader file1.txt file2.txt --pid doi:10.5072/FK2/123456 --api-token abc123 --dataverse-url https://demo.dataverse.org
+
+        Upload files via config file:
+        $ dvuploader --config-path upload_config.yaml
     """
-
     _validate_inputs(
         filepaths=filepaths,
         pid=pid,

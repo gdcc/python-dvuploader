@@ -26,11 +26,25 @@ class DVUploader(BaseModel):
 
     Attributes:
         files (List[File]): A list of File objects to be uploaded.
+        verbose (bool): Whether to print progress and status messages. Defaults to True.
 
     Methods:
-        upload(persistent_id: str, dataverse_url: str, api_token: str) -> None:
-            Uploads the files to the specified Dataverse repository in parallel.
-
+        upload(persistent_id: str, dataverse_url: str, api_token: str, n_parallel_uploads: int = 1, force_native: bool = False, replace_existing: bool = True) -> None:
+            Uploads the files to the specified Dataverse repository.
+        _validate_files() -> None:
+            Validates and hashes the files to be uploaded.
+        _validate_file(file: File) -> None:
+            Validates and hashes a single file.
+        _check_duplicates(dataverse_url: str, persistent_id: str, api_token: str, replace_existing: bool) -> None:
+            Checks for duplicate files in the dataset.
+        _get_file_id(file: File, ds_files: List[Dict]) -> Optional[str]:
+            Gets the file ID for a given file in a dataset.
+        _check_hashes(file: File, dsFile: Dict) -> bool:
+            Checks if a file has the same checksum as a file in the dataset.
+        _has_direct_upload(dataverse_url: str, api_token: str, persistent_id: str) -> bool:
+            Checks if direct upload is supported by the Dataverse instance.
+        setup_progress_bars(files: List[File]) -> Tuple[Progress, List[TaskID]]:
+            Sets up progress bars for tracking file uploads.
     """
 
     files: List[File]
@@ -46,15 +60,16 @@ class DVUploader(BaseModel):
         replace_existing: bool = True,
     ) -> None:
         """
-        Uploads the files to the specified Dataverse repository in parallel.
+        Uploads the files to the specified Dataverse repository.
 
         Args:
             persistent_id (str): The persistent identifier of the Dataverse dataset.
             dataverse_url (str): The URL of the Dataverse repository.
             api_token (str): The API token for the Dataverse repository.
-            n_parallel_uploads (int): The number of parallel uploads to execute. In the case of direct upload, this restricts the amount of parallel chunks per upload. Please use n_jobs to control parallel files.
-            force_native (bool): Forces the use of the native upload method.
-            replace_existing (bool): Indicates if existing files should be replaced.
+            n_parallel_uploads (int): The number of parallel uploads to execute. For direct upload,
+                this restricts parallel chunks per upload. Use n_jobs to control parallel files.
+            force_native (bool): Forces the use of the native upload method instead of direct upload.
+            replace_existing (bool): Whether to replace files that already exist in the dataset.
 
         Returns:
             None
@@ -162,6 +177,15 @@ class DVUploader(BaseModel):
 
     @staticmethod
     async def _validate_file(file: File):
+        """
+        Validates and hashes a single file.
+
+        Args:
+            file (File): The file to validate and hash.
+
+        Returns:
+            None
+        """
         file.extract_file_name()
 
     def _check_duplicates(
@@ -172,15 +196,16 @@ class DVUploader(BaseModel):
         replace_existing: bool,
     ):
         """
-        Checks for duplicate files in the dataset by comparing the checksums.
+        Checks for duplicate files in the dataset by comparing paths and filenames.
 
-        Parameters:
-            dataverse_url (str): The URL of the dataverse.
+        Args:
+            dataverse_url (str): The URL of the Dataverse repository.
             persistent_id (str): The persistent ID of the dataset.
-            api_token (str): The API token for accessing the dataverse.
-            replace_existing (bool): Indicates if existing files should be replaced.
+            api_token (str): The API token for accessing the Dataverse repository.
+            replace_existing (bool): Whether to replace files that already exist.
 
-        Prints a message for each file that already exists in the dataset with the same checksum.
+        Returns:
+            None
         """
 
         ds_files = retrieve_dataset_files(
@@ -249,18 +274,14 @@ class DVUploader(BaseModel):
         ds_files: List[Dict],
     ) -> Optional[str]:
         """
-        Get the file ID for a given file in a dataset.
+        Gets the file ID for a given file in a dataset.
 
         Args:
             file (File): The file object to find the ID for.
             ds_files (List[Dict]): List of dictionary objects representing dataset files.
-            persistent_id (str): The persistent ID of the dataset.
 
         Returns:
-            str: The ID of the file.
-
-        Raises:
-            ValueError: If the file cannot be found in the dataset.
+            Optional[str]: The ID of the file if found, None otherwise.
         """
 
         # Find the file that matches label and directory_label
@@ -276,12 +297,12 @@ class DVUploader(BaseModel):
         """
         Checks if a file has the same checksum as a file in the dataset.
 
-        Parameters:
+        Args:
             file (File): The file to check.
-            dsFile (Dict): The file in the dataset to compare to.
+            dsFile (Dict): The file in the dataset to compare against.
 
         Returns:
-            bool: True if the files have the same checksum, False otherwise.
+            bool: True if the files have matching checksums and paths, False otherwise.
         """
 
         if not file.checksum:
@@ -304,7 +325,17 @@ class DVUploader(BaseModel):
         api_token: str,
         persistent_id: str,
     ) -> bool:
-        """Checks if the response from the ticket request contains a direct upload URL"""
+        """
+        Checks if direct upload is supported by the Dataverse instance.
+
+        Args:
+            dataverse_url (str): The URL of the Dataverse repository.
+            api_token (str): The API token for the Dataverse repository.
+            persistent_id (str): The persistent ID of the dataset.
+
+        Returns:
+            bool: True if direct upload is supported, False otherwise.
+        """
 
         query = build_url(
             endpoint=urljoin(dataverse_url, TICKET_ENDPOINT),
@@ -323,10 +354,13 @@ class DVUploader(BaseModel):
 
     def setup_progress_bars(self, files: List[File]):
         """
-        Sets up progress bars for each file in the uploader.
+        Sets up progress bars for tracking file uploads.
+
+        Args:
+            files (List[File]): The list of files to create progress bars for.
 
         Returns:
-            A list of progress bars, one for each file in the uploader.
+            Tuple[Progress, List[TaskID]]: The Progress object and list of task IDs for the progress bars.
         """
 
         progress = Progress()
