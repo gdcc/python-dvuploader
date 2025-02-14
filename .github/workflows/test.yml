@@ -8,14 +8,9 @@ jobs:
 
     services:
       squid:
-        image: sameersbn/squid:latest
+        image: ubuntu/squid:latest
         ports:
           - 3128:3128
-        options: >-
-          --health-cmd="nc -z localhost 3128 || exit 1"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=3
 
     strategy:
       max-parallel: 4
