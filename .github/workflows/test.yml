@@ -12,7 +12,7 @@ jobs:
         ports:
           - 3128:3128
         options: >-
-          --health-cmd="curl --fail http://localhost:3128 || exit 1"
+          --health-cmd="nc -z localhost 3128 || exit 1"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=3
