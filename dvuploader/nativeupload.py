@@ -5,7 +5,7 @@ import json
 import os
 import tempfile
 import tenacity
-from typing import List, Tuple, Dict
+from typing import List, Optional, Tuple, Dict
 
 from rich.progress import Progress, TaskID
 
@@ -29,6 +29,7 @@ async def native_upload(
     n_parallel_uploads: int,
     pbars,
     progress,
+    proxy: Optional[str] = None,
 ):
     """
     Executes native uploads for the given files in parallel.
@@ -41,7 +42,7 @@ async def native_upload(
         n_parallel_uploads (int): The number of parallel uploads to execute.
         pbars: List of progress bar IDs to track upload progress.
         progress: Progress object to manage progress bars.
-
+        proxy (str): The proxy to use for the upload.
     Returns:
         None
     """
@@ -53,6 +54,7 @@ async def native_upload(
         "headers": {"X-Dataverse-key": api_token},
         "timeout": None,
         "limits": httpx.Limits(max_connections=n_parallel_uploads),
+        "proxy": proxy,
     }
 
     async with httpx.AsyncClient(**session_params) as session:

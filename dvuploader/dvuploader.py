@@ -58,6 +58,7 @@ class DVUploader(BaseModel):
         n_parallel_uploads: int = 1,
         force_native: bool = False,
         replace_existing: bool = True,
+        proxy: Optional[str] = None,
     ) -> None:
         """
         Uploads the files to the specified Dataverse repository.
@@ -70,6 +71,7 @@ class DVUploader(BaseModel):
                 this restricts parallel chunks per upload. Use n_jobs to control parallel files.
             force_native (bool): Forces the use of the native upload method instead of direct upload.
             replace_existing (bool): Whether to replace files that already exist in the dataset.
+            proxy (str): The proxy to use for the upload.
 
         Returns:
             None
