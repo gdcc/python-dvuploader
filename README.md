@@ -93,6 +93,7 @@ Alternatively, you can also supply a `config` file that contains all necessary i
   * `mimetype`: Mimetype of the file.
   * `categories`: Optional list of categories to assign to the file.
   * `restrict`: Boolean to indicate that this is a restricted file. Defaults to False.
+  * `tabIngest`: Boolean to indicate that the file should be ingested as a tab-separated file. Defaults to True.
 
 In the following example, we upload three files to a Dataverse instance. The first file is uploaded to the root directory of the dataset, while the other two files are uploaded to the directory `some/dir`.
 

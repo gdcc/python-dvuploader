@@ -54,6 +54,7 @@ class File(BaseModel):
     checksum: Optional[Checksum] = None
     to_replace: bool = False
     file_id: Optional[Union[str, int]] = Field(default=None, alias="fileToReplaceId")
+    tab_ingest: bool = Field(default=True, alias="tabIngest")
 
     _size: int = PrivateAttr(default=0)
 
