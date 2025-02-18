@@ -122,7 +122,7 @@ dvuploader --config-path config.yml
 
 When uploading multiple tabular files, you might encounter a `500` error and a `OptimisticLockException` upon the file registration step. This has been discussed in https://github.com/IQSS/dataverse/issues/11265 and is due to the fact that intermediate locks prevent the file registration step from completing.
 
-A workaround is to set the `tabIngest` flag to `False` for all files that are to be uploaded. This will cause the files to be uploaded in the native format of the dataverse instance and avoid the intermediate locks.
+A workaround is to set the `tabIngest` flag to `False` for all files that are to be uploaded. This will cause the files not be ingested but will avoid the intermediate locks.
 
 ```python
 dv.File(filepath="hallo.csv", tab_ingest=False)
