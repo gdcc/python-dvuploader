@@ -93,6 +93,7 @@ Alternatively, you can also supply a `config` file that contains all necessary i
   * `mimetype`: Mimetype of the file.
   * `categories`: Optional list of categories to assign to the file.
   * `restrict`: Boolean to indicate that this is a restricted file. Defaults to False.
+  * `tabIngest`: Boolean to indicate that the file should be ingested as a tab-separated file. Defaults to True.
 
 In the following example, we upload three files to a Dataverse instance. The first file is uploaded to the root directory of the dataset, while the other two files are uploaded to the directory `some/dir`.
 
@@ -114,6 +115,20 @@ The `config` file can then be used as follows:
 ```bash
 dvuploader --config-path config.yml
 ```
+
+## Troubleshooting
+
+#### `500` error and `OptimisticLockException`
+
+When uploading multiple tabular files, you might encounter a `500` error and a `OptimisticLockException` upon the file registration step. This has been discussed in https://github.com/IQSS/dataverse/issues/11265 and is due to the fact that intermediate locks prevent the file registration step from completing.
+
+A workaround is to set the `tabIngest` flag to `False` for all files that are to be uploaded. This will cause the files not be ingested but will avoid the intermediate locks.
+
+```python
+dv.File(filepath="hallo.csv", tab_ingest=False)
+```
+
+Please be aware that your tabular files will not be ingested as such but will be uploaded in their native format. You can utilize [pyDataverse](https://github.com/gdcc/pyDataverse/blob/693d0ff8d2849eccc32f9e66228ee8976109881a/pyDataverse/api.py#L2475) to ingest the files after they have been uploaded.
 
 ## Development
 
