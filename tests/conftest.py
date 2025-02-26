@@ -2,7 +2,6 @@ import os
 import pytest
 import httpx
 import random
-import pandas as pd
 
 
 @pytest.fixture
