@@ -5,10 +5,17 @@ on: [push, pull_request]
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    services:
+      squid:
+        image: ubuntu/squid:latest
+        ports:
+          - 3128:3128
+
     strategy:
       max-parallel: 4
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11']
+        python-version: ["3.8", "3.9", "3.10", "3.11"]
 
     env:
       PORT: 8080
@@ -29,8 +36,8 @@ jobs:
           poetry install --with test
       - name: Test with pytest
         env:
-            API_TOKEN: ${{ steps.dataverse.outputs.api_token }}
-            BASE_URL: ${{ steps.dataverse.outputs.base_url }}
-            DVUPLOADER_TESTING: "true"
+          API_TOKEN: ${{ steps.dataverse.outputs.api_token }}
+          BASE_URL: ${{ steps.dataverse.outputs.base_url }}
+          DVUPLOADER_TESTING: "true"
         run: |
           python3 -m poetry run pytest
