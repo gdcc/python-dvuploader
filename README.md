@@ -155,7 +155,7 @@ dvuploader = dv.DVUploader(files=files)
 # ... rest of your upload code
 ```
 
-The retry logic uses exponential backoff which ensures that subsequent retries will be longer, but wont exceed exceed `max_retry_time`. This is particularly useful when dealing with native uploads that may be subject to intermediate locks on the Dataverse side.
+The retry logic uses exponential backoff which ensures that subsequent retries will be longer, but won't exceed exceed `max_retry_time`. This is particularly useful when dealing with native uploads that may be subject to intermediate locks on the Dataverse side.
 
 ## Troubleshooting
 
