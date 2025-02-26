@@ -116,6 +116,47 @@ The `config` file can then be used as follows:
 dvuploader --config-path config.yml
 ```
 
+### Environment variables
+
+DVUploader provides several environment variables that allow you to control retry logic and upload size limits. These can be set either through environment variables directly or programmatically using the `config` function.
+
+**Available Environment Variables:**
+- `DVUPLOADER_MAX_RETRIES`: Maximum number of retry attempts (default: 15)
+- `DVUPLOADER_MAX_RETRY_TIME`: Maximum wait time between retries in seconds (default: 240)
+- `DVUPLOADER_MIN_RETRY_TIME`: Minimum wait time between retries in seconds (default: 1)
+- `DVUPLOADER_RETRY_MULTIPLIER`: Multiplier for exponential backoff (default: 0.1)
+- `DVUPLOADER_MAX_PKG_SIZE`: Maximum package size in bytes (default: 2GB)
+
+**Setting via environment:**
+```bash
+export DVUPLOADER_MAX_RETRIES=20
+export DVUPLOADER_MAX_RETRY_TIME=300
+export DVUPLOADER_MIN_RETRY_TIME=2
+export DVUPLOADER_RETRY_MULTIPLIER=0.2
+export DVUPLOADER_MAX_PKG_SIZE=3221225472  # 3GB
+```
+
+**Setting programmatically:**
+```python
+import dvuploader as dv
+
+# Configure the uploader settings
+dv.config(
+    max_retries=20,
+    max_retry_time=300,
+    min_retry_time=2,
+    retry_multiplier=0.2,
+    max_package_size=3 * 1024**3  # 3GB
+)
+
+# Continue with your upload as normal
+files = [dv.File(filepath="./data.csv")]
+dvuploader = dv.DVUploader(files=files)
+# ... rest of your upload code
+```
+
+The retry logic uses exponential backoff which ensures that subsequent retries will be longer, but wont exceed exceed `max_retry_time`. This is particularly useful when dealing with native uploads that may be subject to intermediate locks on the Dataverse side.
+
 ## Troubleshooting
 
 #### `500` error and `OptimisticLockException`
@@ -125,7 +166,7 @@ When uploading multiple tabular files, you might encounter a `500` error and a `
 A workaround is to set the `tabIngest` flag to `False` for all files that are to be uploaded. This will cause the files not be ingested but will avoid the intermediate locks.
 
 ```python
-dv.File(filepath="hallo.csv", tab_ingest=False)
+dv.File(filepath="tab_file.csv", tab_ingest=False)
 ```
 
 Please be aware that your tabular files will not be ingested as such but will be uploaded in their native format. You can utilize [pyDataverse](https://github.com/gdcc/pyDataverse/blob/693d0ff8d2849eccc32f9e66228ee8976109881a/pyDataverse/api.py#L2475) to ingest the files after they have been uploaded.

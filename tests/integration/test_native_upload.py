@@ -6,7 +6,7 @@ from dvuploader.dvuploader import DVUploader
 from dvuploader.file import File
 
 from dvuploader.utils import add_directory, retrieve_dataset_files
-from tests.conftest import create_dataset, create_mock_file
+from tests.conftest import create_dataset, create_mock_file, create_mock_tabular_file
 
 
 class TestNativeUpload:
@@ -170,3 +170,44 @@ class TestNativeUpload:
             assert file["description"] == "This is a test", (
                 f"Description does not match for file {json.dumps(file)}"
             )
+
+    def test_native_upload_with_large_tabular_files(
+        self,
+        credentials,
+    ):
+        BASE_URL, API_TOKEN = credentials
+
+        # Create Dataset
+        pid = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+        )
+
+        # We are uploading large tabular files in a loop to test the uploader's
+        # ability to wait for locks to be released.
+        #
+        # The uploader should wait for the lock to be released and then upload
+        # the file.
+        #
+        with tempfile.TemporaryDirectory() as directory:
+            for i in range(10):
+                # Arrange
+                path = create_mock_tabular_file(
+                    directory,
+                    f"large_tabular_file_{i}.csv",
+                    rows=100000,
+                    cols=20,
+                )
+
+                # Add all files in the directory
+                files = [File(filepath=path)]
+
+                # Act
+                uploader = DVUploader(files=files)
+                uploader.upload(
+                    persistent_id=pid,
+                    api_token=API_TOKEN,
+                    dataverse_url=BASE_URL,
+                    n_parallel_uploads=1,
+                )

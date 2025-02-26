@@ -236,7 +236,6 @@ async def _single_native_upload(
 
     # Wait to avoid rate limiting
     await asyncio.sleep(1.0)
-
     return False, {"message": "Failed to upload file"}
 
 

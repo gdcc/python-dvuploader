@@ -1,6 +1,8 @@
 import os
 import pytest
 import httpx
+import random
+import pandas as pd
 
 
 @pytest.fixture
@@ -65,5 +67,36 @@ def create_mock_file(
     with open(path, "wb") as f:
         f.seek(size - 1)  # 1 GB
         f.write(b"\0")
+
+    return path
+
+
+def create_mock_tabular_file(
+    directory: str,
+    name: str,
+    rows: int = 1000000,
+    cols: int = 10,
+):
+    """Create a tabular file with the specified number of rows and columns.
+
+    Args:
+        directory (str): The directory where the file will be created.
+        name (str): The name of the file.
+        rows (int, optional): The number of rows in the file. Defaults to 1000000.
+        cols (int, optional): The number of columns in the file. Defaults to 10.
+    """
+    path = os.path.join(directory, name)
+    with open(path, "w") as f:
+        # Create header
+        f.write(",".join([f"col_{i}" for i in range(cols)]) + "\n")
+
+        # Create rows
+        for i in range(rows):
+            f.write(
+                f"{i}"
+                + ","
+                + ",".join([f"{random.randint(0, 100)}" for j in range(cols - 1)])
+                + "\n"
+            )
 
     return path
