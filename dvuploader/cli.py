@@ -90,7 +90,7 @@ def _validate_inputs(
 
 @app.command()
 def main(
-    filepaths: List[str] = typer.Argument(
+    filepaths: Optional[List[str]] = typer.Argument(
         default=None,
         help="A list of filepaths to upload.",
     ),
@@ -141,6 +141,10 @@ def main(
         Upload files via config file:
         $ dvuploader --config-path upload_config.yaml
     """
+
+    if filepaths is None:
+        filepaths = []
+
     _validate_inputs(
         filepaths=filepaths,
         pid=pid,
