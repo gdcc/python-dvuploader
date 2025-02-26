@@ -142,11 +142,6 @@ def main(
         $ dvuploader --config-path upload_config.yaml
     """
 
-    if not filepaths and not config_path:
-        raise typer.BadParameter(
-            "You must provide either a list of filepaths or a path to a configuration file via the --config-path option."
-        )
-
     if filepaths is None:
         filepaths = []
 
