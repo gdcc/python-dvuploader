@@ -1,9 +1,11 @@
 import yaml
 import typer
 
+from pathlib import Path
 from pydantic import BaseModel
 from typing import List, Optional
 from dvuploader import DVUploader, File
+from dvuploader.utils import add_directory
 
 
 class CliInput(BaseModel):
@@ -26,6 +28,29 @@ class CliInput(BaseModel):
 
 
 app = typer.Typer()
+
+def _enumerate_filepaths(filepaths: List[str], recurse: bool) -> List[File]:
+    """
+    Take a list of filepaths and transform it into a list of File objects, optionally recursing into each of them.
+
+    Args:
+        filepaths (List[str]): a list of files or paths for upload
+        recurse (bool): whether to recurse into each given filepath
+
+    Returns:
+        List[File]: A list of File objects representing the files extracted from all filepaths.
+    
+    Raises:
+        FileNotFoundError: If a filepath does not exist.
+        IsADirectoryError: If recurse is False and a filepath points to a directory instead of a file.
+    """
+    if not recurse:
+        return [File(filepath=filepath) for filepath in filepaths]
+
+    files = []
+    for fp in filepaths:
+        files.extend(add_directory(fp) if Path(fp).is_dir() else [File(filepath=fp)])
+    return files
 
 
 def _parse_yaml_config(path: str) -> CliInput:
@@ -50,6 +75,7 @@ def _validate_inputs(
     pid: str,
     dataverse_url: str,
     api_token: str,
+    recurse: bool,
     config_path: Optional[str],
 ) -> None:
     """
@@ -62,16 +88,23 @@ def _validate_inputs(
         pid (str): Persistent identifier of the dataset
         dataverse_url (str): URL of the Dataverse instance
         api_token (str): API token for authentication
+        recurse (bool): Whether to recurse into filepaths
         config_path (Optional[str]): Path to configuration file
 
     Raises:
         typer.BadParameter: If both config file and filepaths are specified
+        typer.BadParameter: If both config file and recurse are specified
         typer.BadParameter: If neither config file nor required parameters are provided
     """
-    if config_path is not None and len(filepaths) > 0:
-        raise typer.BadParameter(
-            "Cannot specify both a JSON/YAML file and a list of filepaths."
-        )
+    if config_path is not None:
+        if len(filepaths) > 0:
+            raise typer.BadParameter(
+                "Cannot specify both a JSON/YAML file and a list of filepaths."
+            )
+        if recurse:
+            raise typer.BadParameter(
+                "Cannot specify both a JSON/YAML file and recurse into filepaths."
+            )
 
     _has_meta_params = all(arg is not None for arg in [pid, dataverse_url, api_token])
     _has_config_file = config_path is not None
@@ -93,6 +126,10 @@ def main(
     filepaths: Optional[List[str]] = typer.Argument(
         default=None,
         help="A list of filepaths to upload.",
+    ),
+    recurse: Optional[bool] = typer.Option(
+        default=False,
+        help="Enable recursion into filepaths.",
     ),
     pid: str = typer.Option(
         default=None,
@@ -123,6 +160,7 @@ def main(
 
     If using command line arguments, you must specify:
     - One or more filepaths to upload
+    - (Optional) whether to recurse into the filepaths
     - The dataset's persistent identifier
     - A valid API token
     - The Dataverse repository URL
@@ -150,6 +188,7 @@ def main(
         pid=pid,
         dataverse_url=dataverse_url,
         api_token=api_token,
+        recurse=recurse,
         config_path=config_path,
     )
 
@@ -161,7 +200,7 @@ def main(
             api_token=api_token,
             dataverse_url=dataverse_url,
             persistent_id=pid,
-            files=[File(filepath=filepath) for filepath in filepaths],
+            files=_enumerate_filepaths(filepaths=filepaths, recurse=recurse),
         )
 
     uploader = DVUploader(files=cli_input.files)

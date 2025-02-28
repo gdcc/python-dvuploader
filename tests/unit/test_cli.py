@@ -57,6 +57,32 @@ class TestCLIMain:
         )
         assert result.exit_code == 0
 
+    def test_recurse(self, credentials):
+        # Arrange
+        BASE_URL, API_TOKEN = credentials
+        pid = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+        )
+
+        # Act
+        result = runner.invoke(
+            app,
+            [
+                "./tests/fixtures/create_dataset.json",
+                "./tests/fixtures/add_dir_files",
+                "--recurse",
+                "--pid",
+                pid,
+                "--api-token",
+                API_TOKEN,
+                "--dataverse-url",
+                BASE_URL,
+            ],
+        )
+        assert result.exit_code == 0
+
     def test_yaml_input(self, credentials):
         # Arrange
         BASE_URL, API_TOKEN = credentials
