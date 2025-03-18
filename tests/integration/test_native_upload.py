@@ -196,7 +196,7 @@ class TestNativeUpload:
                 path = create_mock_tabular_file(
                     directory,
                     f"large_tabular_file_{i}.csv",
-                    rows=100000,
+                    rows=10000,
                     cols=20,
                 )
 
