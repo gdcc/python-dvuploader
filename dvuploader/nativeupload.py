@@ -22,7 +22,7 @@ from dvuploader.utils import build_url, retrieve_dataset_files
 # This will exponentially increase the wait time between retries.
 # The max wait time is 240 seconds per retry though.
 MAX_RETRIES = int(os.environ.get("DVUPLOADER_MAX_RETRIES", 15))
-MAX_RETRY_TIME = int(os.environ.get("DVUPLOADER_MAX_RETRY_TIME", 240))
+MAX_RETRY_TIME = int(os.environ.get("DVUPLOADER_MAX_RETRY_TIME", 60))
 MIN_RETRY_TIME = int(os.environ.get("DVUPLOADER_MIN_RETRY_TIME", 1))
 RETRY_MULTIPLIER = float(os.environ.get("DVUPLOADER_RETRY_MULTIPLIER", 0.1))
 RETRY_STRAT = tenacity.wait_exponential(
@@ -324,11 +324,10 @@ async def _update_metadata(
         dv_path = os.path.join(file.directory_label, file.file_name)  # type: ignore
 
         try:
-            if _is_tabular(file):
-                dv_path = _tab_extension(dv_path)
-                print("TABULAR", dv_path)
-
-            file_id = file_mapping[dv_path]
+            if _tab_extension(dv_path) in file_mapping:
+                file_id = file_mapping[_tab_extension(dv_path)]
+            else:
+                file_id = file_mapping[dv_path]
         except KeyError:
             raise ValueError(
                 (
