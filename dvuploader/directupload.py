@@ -36,6 +36,7 @@ async def direct_upload(
     progress,
     pbars,
     n_parallel_uploads: int,
+    proxy: Optional[str] = None,
 ) -> None:
     """
     Perform parallel direct upload of files to the specified Dataverse repository.
@@ -48,7 +49,7 @@ async def direct_upload(
         progress: Progress object to track upload progress.
         pbars: List of progress bars for each file.
         n_parallel_uploads (int): Number of concurrent uploads to perform.
-
+        proxy (str): The proxy to use for the upload.
     Returns:
         None
     """
@@ -58,6 +59,7 @@ async def direct_upload(
     session_params = {
         "timeout": None,
         "limits": httpx.Limits(max_connections=n_parallel_uploads),
+        "proxy": proxy,
     }
 
     async with httpx.AsyncClient(**session_params) as session:
