@@ -1,7 +1,7 @@
 <h1 align="center">
   Dataverse Uploader</br>
   <a href="https://badge.fury.io/py/dvuploader"><img src="https://badge.fury.io/py/dvuploader.svg" alt="PyPI version" height="18"></a>
-  <img src="https://img.shields.io/badge/python-3.9 | 3.10 | 3.11-blue.svg" alt="Build Badge">
+  <img alt="PyPI - Python Version" src="https://img.shields.io/pypi/pyversions/dvuploader">
   <img src="https://github.com/gdcc/python-dvuploader/actions/workflows/test.yml/badge.svg" alt="Build Badge">
 </h1>
 
