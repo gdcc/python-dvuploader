@@ -20,8 +20,8 @@ jobs:
     env:
       PORT: 8080
     steps:
-      - name: "Checkout"
-        uses: "actions/checkout@v4"
+      - name: 'Checkout'
+        uses: 'actions/checkout@v4'
       - name: Run Dataverse Action
         id: dataverse
         uses: gdcc/dataverse-action@main
@@ -38,6 +38,7 @@ jobs:
         env:
           API_TOKEN: ${{ steps.dataverse.outputs.api_token }}
           BASE_URL: ${{ steps.dataverse.outputs.base_url }}
-          DVUPLOADER_TESTING: "true"
+          DVUPLOADER_TESTING: 'true'
+          TEST_ROWS: 100000
         run: |
           python3 -m poetry run pytest

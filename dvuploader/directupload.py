@@ -337,7 +337,6 @@ async def _upload_multipart(
     )
 
     file.apply_checksum()
-    print(file.checksum)
 
     return True, storage_identifier
 
@@ -556,17 +555,21 @@ async def _add_files_to_ds(
     novel_json_data = _prepare_registration(files, use_replace=False)
     replace_json_data = _prepare_registration(files, use_replace=True)
 
-    await _multipart_json_data_request(
-        session=session,
-        json_data=novel_json_data,
-        url=novel_url,
-    )
+    if novel_json_data:
+        # Register new files, if any
+        await _multipart_json_data_request(
+            session=session,
+            json_data=novel_json_data,
+            url=novel_url,
+        )
 
-    await _multipart_json_data_request(
-        session=session,
-        json_data=replace_json_data,
-        url=replace_url,
-    )
+    if replace_json_data:
+        # Register replacement files, if any
+        await _multipart_json_data_request(
+            session=session,
+            json_data=replace_json_data,
+            url=replace_url,
+        )
 
     progress.update(pbar, advance=1)
 

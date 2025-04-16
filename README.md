@@ -93,6 +93,7 @@ Alternatively, you can also supply a `config` file that contains all necessary i
   * `mimetype`: Mimetype of the file.
   * `categories`: Optional list of categories to assign to the file.
   * `restrict`: Boolean to indicate that this is a restricted file. Defaults to False.
+  * `tabIngest`: Boolean to indicate that the file should be ingested as a tab-separated file. Defaults to True.
 
 In the following example, we upload three files to a Dataverse instance. The first file is uploaded to the root directory of the dataset, while the other two files are uploaded to the directory `some/dir`.
 
@@ -114,6 +115,61 @@ The `config` file can then be used as follows:
 ```bash
 dvuploader --config-path config.yml
 ```
+
+### Environment variables
+
+DVUploader provides several environment variables that allow you to control retry logic and upload size limits. These can be set either through environment variables directly or programmatically using the `config` function.
+
+**Available Environment Variables:**
+- `DVUPLOADER_MAX_RETRIES`: Maximum number of retry attempts (default: 15)
+- `DVUPLOADER_MAX_RETRY_TIME`: Maximum wait time between retries in seconds (default: 240)
+- `DVUPLOADER_MIN_RETRY_TIME`: Minimum wait time between retries in seconds (default: 1)
+- `DVUPLOADER_RETRY_MULTIPLIER`: Multiplier for exponential backoff (default: 0.1)
+- `DVUPLOADER_MAX_PKG_SIZE`: Maximum package size in bytes (default: 2GB)
+
+**Setting via environment:**
+```bash
+export DVUPLOADER_MAX_RETRIES=20
+export DVUPLOADER_MAX_RETRY_TIME=300
+export DVUPLOADER_MIN_RETRY_TIME=2
+export DVUPLOADER_RETRY_MULTIPLIER=0.2
+export DVUPLOADER_MAX_PKG_SIZE=3221225472  # 3GB
+```
+
+**Setting programmatically:**
+```python
+import dvuploader as dv
+
+# Configure the uploader settings
+dv.config(
+    max_retries=20,
+    max_retry_time=300,
+    min_retry_time=2,
+    retry_multiplier=0.2,
+    max_package_size=3 * 1024**3  # 3GB
+)
+
+# Continue with your upload as normal
+files = [dv.File(filepath="./data.csv")]
+dvuploader = dv.DVUploader(files=files)
+# ... rest of your upload code
+```
+
+The retry logic uses exponential backoff which ensures that subsequent retries will be longer, but won't exceed exceed `max_retry_time`. This is particularly useful when dealing with native uploads that may be subject to intermediate locks on the Dataverse side.
+
+## Troubleshooting
+
+#### `500` error and `OptimisticLockException`
+
+When uploading multiple tabular files, you might encounter a `500` error and a `OptimisticLockException` upon the file registration step. This has been discussed in https://github.com/IQSS/dataverse/issues/11265 and is due to the fact that intermediate locks prevent the file registration step from completing.
+
+A workaround is to set the `tabIngest` flag to `False` for all files that are to be uploaded. This will cause the files not be ingested but will avoid the intermediate locks.
+
+```python
+dv.File(filepath="tab_file.csv", tab_ingest=False)
+```
+
+Please be aware that your tabular files will not be ingested as such but will be uploaded in their native format. You can utilize [pyDataverse](https://github.com/gdcc/pyDataverse/blob/693d0ff8d2849eccc32f9e66228ee8976109881a/pyDataverse/api.py#L2475) to ingest the files after they have been uploaded.
 
 ## Development
 

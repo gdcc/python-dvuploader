@@ -1,12 +1,15 @@
 from io import BytesIO
 import json
+import os
 import tempfile
+
+import pytest
 
 from dvuploader.dvuploader import DVUploader
 from dvuploader.file import File
 
 from dvuploader.utils import add_directory, retrieve_dataset_files
-from tests.conftest import create_dataset, create_mock_file
+from tests.conftest import create_dataset, create_mock_file, create_mock_tabular_file
 
 
 class TestNativeUpload:
@@ -218,4 +221,274 @@ class TestNativeUpload:
 
             assert file["description"] == "This is a test", (
                 f"Description does not match for file {json.dumps(file)}"
+            )
+
+    def test_native_upload_with_large_tabular_files_loop(
+        self,
+        credentials,
+    ):
+        BASE_URL, API_TOKEN = credentials
+
+        # Create Dataset
+        pid = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+        )
+
+        # We are uploading large tabular files in a loop to test the uploader's
+        # ability to wait for locks to be released.
+        #
+        # The uploader should wait for the lock to be released and then upload
+        # the file.
+        #
+        rows = os.environ.get("TEST_ROWS", 10000)
+
+        try:
+            rows = int(rows)
+        except ValueError:
+            raise ValueError(f"TEST_ROWS must be an integer, got {rows}")
+
+        # We first try the sequential case by uploading 10 files in a loop.
+        with tempfile.TemporaryDirectory() as directory:
+            for i in range(10):
+                # Arrange
+                path = create_mock_tabular_file(
+                    directory,
+                    f"large_tabular_file_{i}.csv",
+                    rows=rows,
+                    cols=20,
+                )
+
+                # Add all files in the directory
+                files = [File(filepath=path)]
+
+                # Act
+                uploader = DVUploader(files=files)
+                uploader.upload(
+                    persistent_id=pid,
+                    api_token=API_TOKEN,
+                    dataverse_url=BASE_URL,
+                    n_parallel_uploads=1,
+                )
+
+    def test_native_upload_with_large_tabular_files(
+        self,
+        credentials,
+    ):
+        BASE_URL, API_TOKEN = credentials
+
+        # Create Dataset
+        pid = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+        )
+
+        # We are uploading large tabular files in a loop to test the uploader's
+        # ability to wait for locks to be released.
+        #
+        # The uploader should wait for the lock to be released and then upload
+        # the file.
+        #
+        rows = os.environ.get("TEST_ROWS", 10000)
+
+        try:
+            rows = int(rows)
+        except ValueError:
+            raise ValueError(f"TEST_ROWS must be an integer, got {rows}")
+
+        # We first try the sequential case by uploading 10 files in a loop.
+        with tempfile.TemporaryDirectory() as directory:
+            files = []
+            for i in range(10):
+                # Arrange
+                path = create_mock_tabular_file(
+                    directory,
+                    f"large_tabular_file_{i}.csv",
+                    rows=rows,
+                    cols=20,
+                )
+
+                # Add all files in the directory
+                files.append(File(filepath=path))
+
+            # Act
+            uploader = DVUploader(files=files)
+            uploader.upload(
+                persistent_id=pid,
+                api_token=API_TOKEN,
+                dataverse_url=BASE_URL,
+                n_parallel_uploads=1,
+            )
+
+    def test_native_upload_with_large_tabular_files_parallel(
+        self,
+        credentials,
+    ):
+        BASE_URL, API_TOKEN = credentials
+
+        # Create Dataset
+        pid = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+        )
+
+        # We are uploading large tabular files in a loop to test the uploader's
+        # ability to wait for locks to be released.
+        #
+        # The uploader should wait for the lock to be released and then upload
+        # the file.
+        #
+        rows = os.environ.get("TEST_ROWS", 10000)
+
+        try:
+            rows = int(rows)
+        except ValueError:
+            raise ValueError(f"TEST_ROWS must be an integer, got {rows}")
+
+        # We first try the sequential case by uploading 10 files in a loop.
+        with tempfile.TemporaryDirectory() as directory:
+            files = []
+            for i in range(10):
+                # Arrange
+                path = create_mock_tabular_file(
+                    directory,
+                    f"large_tabular_file_{i}.csv",
+                    rows=rows,
+                    cols=20,
+                )
+
+                # Add all files in the directory
+                files.append(File(filepath=path))
+
+            # Act
+            uploader = DVUploader(files=files)
+            uploader.upload(
+                persistent_id=pid,
+                api_token=API_TOKEN,
+                dataverse_url=BASE_URL,
+                n_parallel_uploads=10,
+            )
+
+    def test_zip_file_upload(
+        self,
+        credentials,
+    ):
+        BASE_URL, API_TOKEN = credentials
+
+        # Create Dataset
+        pid = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+        )
+
+        # Arrange
+        files = [
+            File(filepath="tests/fixtures/archive.zip"),
+        ]
+
+        # Act
+        uploader = DVUploader(files=files)
+        uploader.upload(
+            persistent_id=pid,
+            api_token=API_TOKEN,
+            dataverse_url=BASE_URL,
+            n_parallel_uploads=10,
+        )
+
+        # Assert
+        files = retrieve_dataset_files(
+            dataverse_url=BASE_URL,
+            persistent_id=pid,
+            api_token=API_TOKEN,
+        )
+
+        assert len(files) == 5, f"Expected 5 files, got {len(files)}"
+
+        expected_files = [
+            "hallo.tab",
+            "hallo2.tab",
+            "hallo3.tab",
+            "hallo4.tab",
+            "hallo5.tab",
+        ]
+
+        assert sorted([file["label"] for file in files]) == sorted(expected_files)
+
+    def test_zipzip_file_upload(
+        self,
+        credentials,
+    ):
+        BASE_URL, API_TOKEN = credentials
+
+        # Create Dataset
+        pid = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+        )
+
+        # Arrange
+        files = [
+            File(filepath="tests/fixtures/archive.zip"),
+        ]
+
+        # Act
+        uploader = DVUploader(files=files)
+        uploader.upload(
+            persistent_id=pid,
+            api_token=API_TOKEN,
+            dataverse_url=BASE_URL,
+            n_parallel_uploads=10,
+        )
+
+        # Assert
+        files = retrieve_dataset_files(
+            dataverse_url=BASE_URL,
+            persistent_id=pid,
+            api_token=API_TOKEN,
+        )
+
+        assert len(files) == 5, f"Expected 5 files, got {len(files)}"
+
+        expected_files = [
+            "hallo.tab",
+            "hallo2.tab",
+            "hallo3.tab",
+            "hallo4.tab",
+            "hallo5.tab",
+        ]
+
+        assert sorted([file["label"] for file in files]) == sorted(expected_files)
+
+    def test_too_many_zip_files(
+        self,
+        credentials,
+    ):
+        BASE_URL, API_TOKEN = credentials
+
+        # Create Dataset
+        pid = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+        )
+
+        # Arrange
+        files = [
+            File(filepath="tests/fixtures/many_files.zip"),
+        ]
+
+        # Act
+        uploader = DVUploader(files=files)
+
+        with pytest.raises(ValueError):
+            uploader.upload(
+                persistent_id=pid,
+                api_token=API_TOKEN,
+                dataverse_url=BASE_URL,
+                n_parallel_uploads=10,
             )

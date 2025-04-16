@@ -45,7 +45,7 @@ class File(BaseModel):
     handler: Union[BytesIO, StringIO, IO, None] = Field(default=None, exclude=True)
     description: str = ""
     directory_label: str = Field(default="", alias="directoryLabel")
-    mimeType: str = "text/plain"
+    mimeType: str = "application/octet-stream"
     categories: List[str] = ["DATA"]
     restrict: bool = False
     checksum_type: ChecksumTypes = Field(default=ChecksumTypes.MD5, exclude=True)
@@ -54,6 +54,7 @@ class File(BaseModel):
     checksum: Optional[Checksum] = None
     to_replace: bool = False
     file_id: Optional[Union[str, int]] = Field(default=None, alias="fileToReplaceId")
+    tab_ingest: bool = Field(default=True, alias="tabIngest")
 
     _size: int = PrivateAttr(default=0)
 

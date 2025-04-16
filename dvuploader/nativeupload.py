@@ -1,9 +1,11 @@
 import asyncio
 from io import BytesIO
+from pathlib import Path
 import httpx
 import json
 import os
 import tempfile
+import rich
 import tenacity
 from typing import List, Optional, Tuple, Dict
 
@@ -13,12 +15,44 @@ from dvuploader.file import File
 from dvuploader.packaging import distribute_files, zip_files
 from dvuploader.utils import build_url, retrieve_dataset_files
 
+##### CONFIGURATION #####
+
+# Based on MAX_RETRIES, we will wait between 0.3 and 120 seconds between retries:
+# Exponential recursion: 0.1 * 2^n
+#
+# This will exponentially increase the wait time between retries.
+# The max wait time is 240 seconds per retry though.
 MAX_RETRIES = int(os.environ.get("DVUPLOADER_MAX_RETRIES", 15))
+MAX_RETRY_TIME = int(os.environ.get("DVUPLOADER_MAX_RETRY_TIME", 60))
+MIN_RETRY_TIME = int(os.environ.get("DVUPLOADER_MIN_RETRY_TIME", 1))
+RETRY_MULTIPLIER = float(os.environ.get("DVUPLOADER_RETRY_MULTIPLIER", 0.1))
+RETRY_STRAT = tenacity.wait_exponential(
+    multiplier=RETRY_MULTIPLIER,
+    min=MIN_RETRY_TIME,
+    max=MAX_RETRY_TIME,
+)
+
+assert isinstance(MAX_RETRIES, int), "DVUPLOADER_MAX_RETRIES must be an integer"
+assert isinstance(MAX_RETRY_TIME, int), "DVUPLOADER_MAX_RETRY_TIME must be an integer"
+assert isinstance(MIN_RETRY_TIME, int), "DVUPLOADER_MIN_RETRY_TIME must be an integer"
+assert isinstance(RETRY_MULTIPLIER, float), (
+    "DVUPLOADER_RETRY_MULTIPLIER must be a float"
+)
+
+##### END CONFIGURATION #####
+
 NATIVE_UPLOAD_ENDPOINT = "/api/datasets/:persistentId/add"
 NATIVE_REPLACE_ENDPOINT = "/api/files/{FILE_ID}/replace"
 NATIVE_METADATA_ENDPOINT = "/api/files/{FILE_ID}/metadata"
 
-assert isinstance(MAX_RETRIES, int), "DVUPLOADER_MAX_RETRIES must be an integer"
+TABULAR_EXTENSIONS = [
+    "csv",
+    "tsv",
+]
+
+##### ERROR MESSAGES #####
+
+ZIP_LIMIT_MESSAGE = "The number of files in the zip archive is over the limit"
 
 
 async def native_upload(
@@ -174,8 +208,9 @@ def _reset_progress(
 
 
 @tenacity.retry(
-    wait=tenacity.wait_fixed(0.5),
+    wait=RETRY_STRAT,
     stop=tenacity.stop_after_attempt(MAX_RETRIES),
+    retry=tenacity.retry_if_exception_type((httpx.HTTPStatusError,)),
 )
 async def _single_native_upload(
     session: httpx.AsyncClient,
@@ -213,7 +248,11 @@ async def _single_native_upload(
     json_data = _get_json_data(file)
 
     files = {
-        "file": (file.file_name, file.handler, file.mimeType),
+        "file": (
+            file.file_name,
+            file.handler,
+            file.mimeType,
+        ),
         "jsonData": (
             None,
             BytesIO(json.dumps(json_data).encode()),
@@ -226,9 +265,20 @@ async def _single_native_upload(
         files=files,  # type: ignore
     )
 
+    if response.status_code == 400 and response.json()["message"].startswith(
+        ZIP_LIMIT_MESSAGE
+    ):
+        # Explicitly handle the zip limit error, because otherwise we will run into
+        # unnecessary retries.
+        raise ValueError(
+            f"Could not upload file '{file.file_name}' due to zip limit:\n{response.json()['message']}"
+        )
+
+    # Any other error is re-raised and the error will be handled by the retry logic.
     response.raise_for_status()
 
     if response.status_code == 200:
+        # If we did well, update the progress bar.
         progress.update(pbar, advance=file._size, complete=file._size)
 
         # Wait to avoid rate limiting
@@ -238,7 +288,6 @@ async def _single_native_upload(
 
     # Wait to avoid rate limiting
     await asyncio.sleep(1.0)
-
     return False, {"message": "Failed to upload file"}
 
 
@@ -294,14 +343,23 @@ async def _update_metadata(
         dv_path = os.path.join(file.directory_label, file.file_name)  # type: ignore
 
         try:
-            file_id = file_mapping[dv_path]
+            if _tab_extension(dv_path) in file_mapping:
+                file_id = file_mapping[_tab_extension(dv_path)]
+            elif file.file_name and _is_zip(file.file_name):
+                # When the file is a zip it will be unpacked and thus
+                # the expected file name of the zip will not be in the
+                # dataset, since it has been unpacked.
+                continue
+            else:
+                file_id = file_mapping[dv_path]
         except KeyError:
-            raise ValueError(
+            rich.print(
                 (
                     f"File {dv_path} not found in Dataverse repository.",
-                    "This may be due to the file not being uploaded to the repository.",
+                    "This may be due to the file not being uploaded to the repository:",
                 )
             )
+            continue
 
         task = _update_single_metadata(
             session=session,
@@ -315,7 +373,7 @@ async def _update_metadata(
 
 
 @tenacity.retry(
-    wait=tenacity.wait_fixed(0.3),
+    wait=RETRY_STRAT,
     stop=tenacity.stop_after_attempt(MAX_RETRIES),
 )
 async def _update_single_metadata(
@@ -356,6 +414,7 @@ async def _update_single_metadata(
     if response.status_code == 200:
         return
     else:
+        print(response.json())
         await asyncio.sleep(1.0)
 
     raise ValueError(f"Failed to update metadata for file {file.file_name}.")
@@ -407,3 +466,17 @@ def _create_file_id_path_mapping(files):
         mapping[path] = file["id"]
 
     return mapping
+
+
+def _tab_extension(path: str) -> str:
+    """
+    Adds a tabular extension to the path if it is not already present.
+    """
+    return str(Path(path).with_suffix(".tab"))
+
+
+def _is_zip(file_name: str) -> bool:
+    """
+    Checks if a file name ends with a zip extension.
+    """
+    return file_name.endswith(".zip")
