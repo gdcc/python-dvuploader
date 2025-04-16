@@ -5,6 +5,7 @@ import httpx
 import json
 import os
 import tempfile
+import rich
 import tenacity
 from typing import List, Tuple, Dict
 
@@ -48,6 +49,10 @@ TABULAR_EXTENSIONS = [
     "csv",
     "tsv",
 ]
+
+##### ERROR MESSAGES #####
+
+ZIP_LIMIT_MESSAGE = "The number of files in the zip archive is over the limit"
 
 
 async def native_upload(
@@ -203,6 +208,7 @@ def _reset_progress(
 @tenacity.retry(
     wait=RETRY_STRAT,
     stop=tenacity.stop_after_attempt(MAX_RETRIES),
+    retry=tenacity.retry_if_exception_type((httpx.HTTPStatusError,)),
 )
 async def _single_native_upload(
     session: httpx.AsyncClient,
@@ -257,9 +263,20 @@ async def _single_native_upload(
         files=files,  # type: ignore
     )
 
+    if response.status_code == 400 and response.json()["message"].startswith(
+        ZIP_LIMIT_MESSAGE
+    ):
+        # Explicitly handle the zip limit error, because otherwise we will run into
+        # unnecessary retries.
+        raise ValueError(
+            f"Could not upload file '{file.file_name}' due to zip limit:\n{response.json()['message']}"
+        )
+
+    # Any other error is re-raised and the error will be handled by the retry logic.
     response.raise_for_status()
 
     if response.status_code == 200:
+        # If we did well, update the progress bar.
         progress.update(pbar, advance=file._size, complete=file._size)
 
         # Wait to avoid rate limiting
@@ -326,15 +343,21 @@ async def _update_metadata(
         try:
             if _tab_extension(dv_path) in file_mapping:
                 file_id = file_mapping[_tab_extension(dv_path)]
+            elif file.file_name and _is_zip(file.file_name):
+                # When the file is a zip it will be unpacked and thus
+                # the expected file name of the zip will not be in the
+                # dataset, since it has been unpacked.
+                continue
             else:
                 file_id = file_mapping[dv_path]
         except KeyError:
-            raise ValueError(
+            rich.print(
                 (
                     f"File {dv_path} not found in Dataverse repository.",
                     "This may be due to the file not being uploaded to the repository:",
                 )
             )
+            continue
 
         task = _update_single_metadata(
             session=session,
@@ -389,6 +412,7 @@ async def _update_single_metadata(
     if response.status_code == 200:
         return
     else:
+        print(response.json())
         await asyncio.sleep(1.0)
 
     raise ValueError(f"Failed to update metadata for file {file.file_name}.")
@@ -449,14 +473,8 @@ def _tab_extension(path: str) -> str:
     return str(Path(path).with_suffix(".tab"))
 
 
-def _is_tabular(file: File) -> bool:
+def _is_zip(file_name: str) -> bool:
     """
-    Checks if a file is a tabular file.
+    Checks if a file name ends with a zip extension.
     """
-    is_tabular = False
-
-    for extension in TABULAR_EXTENSIONS:
-        if file.file_name and file.file_name.endswith(extension):
-            is_tabular = True
-            break
-    return is_tabular
+    return file_name.endswith(".zip")
