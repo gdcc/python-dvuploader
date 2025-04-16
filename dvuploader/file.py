@@ -18,7 +18,7 @@ class File(BaseModel):
         description (str): The description of the file.
         directory_label (str): The label of the directory where the file is stored.
         mimeType (str): The MIME type of the file.
-        categories (List[str]): The categories associated with the file.
+        categories (Optional[List[str]]): The categories associated with the file.
         restrict (bool): Indicates if the file is restricted.
         checksum_type (ChecksumTypes): The type of checksum used for the file.
         storageIdentifier (Optional[str]): The identifier of the storage where the file is stored.
@@ -46,7 +46,7 @@ class File(BaseModel):
     description: str = ""
     directory_label: str = Field(default="", alias="directoryLabel")
     mimeType: str = "application/octet-stream"
-    categories: List[str] = ["DATA"]
+    categories: Optional[List[str]] = ["DATA"]
     restrict: bool = False
     checksum_type: ChecksumTypes = Field(default=ChecksumTypes.MD5, exclude=True)
     storageIdentifier: Optional[str] = None
