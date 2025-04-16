@@ -3,6 +3,8 @@ import json
 import os
 import tempfile
 
+import pytest
+
 from dvuploader.dvuploader import DVUploader
 from dvuploader.file import File
 
@@ -314,6 +316,127 @@ class TestNativeUpload:
 
             # Act
             uploader = DVUploader(files=files)
+            uploader.upload(
+                persistent_id=pid,
+                api_token=API_TOKEN,
+                dataverse_url=BASE_URL,
+                n_parallel_uploads=10,
+            )
+
+    def test_zip_file_upload(
+        self,
+        credentials,
+    ):
+        BASE_URL, API_TOKEN = credentials
+
+        # Create Dataset
+        pid = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+        )
+
+        # Arrange
+        files = [
+            File(filepath="tests/fixtures/archive.zip"),
+        ]
+
+        # Act
+        uploader = DVUploader(files=files)
+        uploader.upload(
+            persistent_id=pid,
+            api_token=API_TOKEN,
+            dataverse_url=BASE_URL,
+            n_parallel_uploads=10,
+        )
+
+        # Assert
+        files = retrieve_dataset_files(
+            dataverse_url=BASE_URL,
+            persistent_id=pid,
+            api_token=API_TOKEN,
+        )
+
+        assert len(files) == 5, f"Expected 5 files, got {len(files)}"
+
+        expected_files = [
+            "hallo.tab",
+            "hallo2.tab",
+            "hallo3.tab",
+            "hallo4.tab",
+            "hallo5.tab",
+        ]
+
+        assert sorted([file["label"] for file in files]) == sorted(expected_files)
+
+    def test_zipzip_file_upload(
+        self,
+        credentials,
+    ):
+        BASE_URL, API_TOKEN = credentials
+
+        # Create Dataset
+        pid = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+        )
+
+        # Arrange
+        files = [
+            File(filepath="tests/fixtures/archive.zip"),
+        ]
+
+        # Act
+        uploader = DVUploader(files=files)
+        uploader.upload(
+            persistent_id=pid,
+            api_token=API_TOKEN,
+            dataverse_url=BASE_URL,
+            n_parallel_uploads=10,
+        )
+
+        # Assert
+        files = retrieve_dataset_files(
+            dataverse_url=BASE_URL,
+            persistent_id=pid,
+            api_token=API_TOKEN,
+        )
+
+        assert len(files) == 5, f"Expected 5 files, got {len(files)}"
+
+        expected_files = [
+            "hallo.tab",
+            "hallo2.tab",
+            "hallo3.tab",
+            "hallo4.tab",
+            "hallo5.tab",
+        ]
+
+        assert sorted([file["label"] for file in files]) == sorted(expected_files)
+
+    def test_too_many_zip_files(
+        self,
+        credentials,
+    ):
+        BASE_URL, API_TOKEN = credentials
+
+        # Create Dataset
+        pid = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+        )
+
+        # Arrange
+        files = [
+            File(filepath="tests/fixtures/many_files.zip"),
+        ]
+
+        # Act
+        uploader = DVUploader(files=files)
+
+        with pytest.raises(ValueError):
             uploader.upload(
                 persistent_id=pid,
                 api_token=API_TOKEN,
