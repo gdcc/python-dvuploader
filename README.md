@@ -48,6 +48,7 @@ import dvuploader as dv
 # Add file individually
 files = [
     dv.File(filepath="./small.txt"),
+    dv.File(filepath="./tabular.csv", tab_ingest=False),
     dv.File(directory_label="some/dir", filepath="./medium.txt"),
     dv.File(directory_label="some/dir", filepath="./big.txt"),
     *dv.add_directory("./data"), # Add an entire directory
