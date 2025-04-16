@@ -335,7 +335,6 @@ async def _upload_multipart(
     )
 
     file.apply_checksum()
-    print(file.checksum)
 
     return True, storage_identifier
 
