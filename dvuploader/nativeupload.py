@@ -301,13 +301,14 @@ def _get_json_data(file: File) -> Dict:
     Returns:
         Dict: Dictionary containing file metadata for the upload request.
     """
-    return {
-        "description": file.description,
-        "directoryLabel": file.directory_label,
-        "categories": file.categories,
-        "restrict": file.restrict,
-        "forceReplace": True,
-    }
+    exclude = (
+        {"to_replace", "file_id"} if file.to_replace else {"to_replace", "file_id"}
+    )
+    return file.model_dump(
+        by_alias=True,
+        exclude=exclude,
+        exclude_none=True,
+    )
 
 
 async def _update_metadata(
