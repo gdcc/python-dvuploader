@@ -73,7 +73,7 @@ def add_directory(
     ignore: List[str] = [r"^\."],
     rootDirectoryLabel: str = "",
 ):
-    """
+    r"""
     Recursively adds all files in the specified directory to a list of File objects.
 
     Args:
