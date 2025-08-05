@@ -421,7 +421,6 @@ async def _update_single_metadata(
     json_data = _get_json_data(file)
 
     del json_data["forceReplace"]
-    del json_data["restrict"]
 
     # Send metadata as a readable byte stream
     # This is a workaround since "data" and "json"
