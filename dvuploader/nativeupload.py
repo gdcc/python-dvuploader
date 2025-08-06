@@ -182,7 +182,6 @@ def _zip_packages(
     for index, package in packages:
         if len(package) == 1:
             file = package[0]
-            file.extract_file_name()
             pbar = progress.add_task(
                 file.file_name,  # type: ignore
                 total=file._size,

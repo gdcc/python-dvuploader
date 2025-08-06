@@ -240,8 +240,6 @@ class DVUploader(BaseModel):
 
                 if replace_existing:
                     ds_file = self._get_dsfile_by_id(file.file_id, ds_files)
-                    # calculate size and initialize hash function
-                    file.extract_file_name()
                     if not self._check_size(file, ds_file):
                         file._unchanged_data = False
                     else:
