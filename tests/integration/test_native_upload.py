@@ -433,7 +433,7 @@ class TestNativeUpload:
 
         # Arrange
         files = [
-            File(filepath="tests/fixtures/archive.zip"),
+            File(filepath="tests/fixtures/archive.zip.zip"),
         ]
 
         # Act
@@ -452,14 +452,10 @@ class TestNativeUpload:
             api_token=API_TOKEN,
         )
 
-        assert len(files) == 5, f"Expected 5 files, got {len(files)}"
+        assert len(files) == 1, f"Expected 1 file, got {len(files)}"
 
         expected_files = [
-            "hallo.tab",
-            "hallo2.tab",
-            "hallo3.tab",
-            "hallo4.tab",
-            "hallo5.tab",
+            "Archiv.zip",  # codespell:ignore
         ]
 
         assert sorted([file["label"] for file in files]) == sorted(expected_files)
