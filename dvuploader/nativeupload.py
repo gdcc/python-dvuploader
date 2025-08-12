@@ -369,8 +369,8 @@ async def _update_metadata(
         try:
             if _tab_extension(dv_path) in file_mapping:
                 file_id = file_mapping[_tab_extension(dv_path)]
-            elif file.file_name and _is_zip(file.file_name):
-                # When the file is a zip it will be unpacked and thus
+            elif file.file_name and _is_zip(file.file_name) and not file._is_inside_zip:
+                # When the file is a zip package it will be unpacked and thus
                 # the expected file name of the zip will not be in the
                 # dataset, since it has been unpacked.
                 continue
