@@ -99,6 +99,8 @@ def zip_files(
                 zinfo_or_arcname=_create_arcname(file),
             )
 
+        zip_file.printdir()
+
     return path
 
 

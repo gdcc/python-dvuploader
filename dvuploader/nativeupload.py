@@ -91,6 +91,8 @@ async def native_upload(
         "proxy": proxy,
     }
 
+    rich.print(files)
+
     async with httpx.AsyncClient(**session_params) as session:
         with tempfile.TemporaryDirectory() as tmp_dir:
             packages = distribute_files(files)
