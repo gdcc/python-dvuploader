@@ -205,7 +205,7 @@ export DVUPLOADER_TESTING=true
 **3. Run the test(s) with pytest**
 
 ```bash
-python -m pytest -v
+poetry run pytest
 ```
 
 ### Linting
