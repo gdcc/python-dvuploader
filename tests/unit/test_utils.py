@@ -168,7 +168,7 @@ class TestRetrieveDatasetFiles:
     def test_raise_http_error(self):
         # Call the function under test and assert that it raises an HTTPError
         with pytest.raises(httpx.HTTPStatusError):
-            retrieve_dataset_files("http://example.com", "12345", "token")
+            retrieve_dataset_files("http://demo.dataverse.org", "12345", "token")
 
 
 class TestSetupPbar:
