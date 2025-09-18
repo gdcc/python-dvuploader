@@ -301,13 +301,18 @@ def _get_json_data(file: File) -> Dict:
     Returns:
         Dict: Dictionary containing file metadata for the upload request.
     """
-    return {
+
+    metadata = {
         "description": file.description,
-        "directoryLabel": file.directory_label,
         "categories": file.categories,
         "restrict": file.restrict,
         "forceReplace": True,
     }
+
+    if file.directory_label:
+        metadata["directoryLabel"] = file.directory_label
+
+    return metadata
 
 
 async def _update_metadata(
@@ -414,7 +419,6 @@ async def _update_single_metadata(
     if response.status_code == 200:
         return
     else:
-        print(response.json())
         await asyncio.sleep(1.0)
 
     raise ValueError(f"Failed to update metadata for file {file.file_name}.")
