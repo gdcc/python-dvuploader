@@ -212,11 +212,11 @@ class TestNativeUpload:
             file = next(file for file in files if file["label"] == ex_f)
 
             assert file["label"] == ex_f, (
-                f"File label does not match for file {json.dumps(file)}"
+                f"File label {ex_f} does not match for file {json.dumps(file, indent=2)}"
             )
 
             assert file.get("directoryLabel", "") == ex_dir, (
-                f"Directory label does not match for file {json.dumps(file)}"
+                f"Directory label '{ex_dir}' of expected file '{ex_f}' does not match for file {json.dumps(file, indent=2)}"
             )
 
             assert file["description"] == "This is a test", (
