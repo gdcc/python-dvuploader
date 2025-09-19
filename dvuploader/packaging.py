@@ -98,6 +98,7 @@ def zip_files(
                 data=file.handler.read(),  # type: ignore
                 zinfo_or_arcname=_create_arcname(file),
             )
+            file._is_inside_zip = True
 
     return path
 

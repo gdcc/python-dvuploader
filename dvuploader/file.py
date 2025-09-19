@@ -29,6 +29,7 @@ class File(BaseModel):
 
     Private Attributes:
         _size (int): Size of the file in bytes.
+        _is_inside_zip (bool): Indicates if the file is packaged inside a zip archive.
 
     Methods:
         extract_file_name(): Extracts filename from filepath and initializes file handler.
@@ -57,6 +58,7 @@ class File(BaseModel):
     tab_ingest: bool = Field(default=True, alias="tabIngest")
 
     _size: int = PrivateAttr(default=0)
+    _is_inside_zip: bool = PrivateAttr(default=False)
 
     def extract_file_name(self):
         """
