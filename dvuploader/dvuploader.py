@@ -239,9 +239,22 @@ class DVUploader(BaseModel):
                 to_skip.append(file.file_id)
 
                 if replace_existing:
-                    table.add_row(
-                        file.file_name, "[bright_cyan]Exists", "[bright_black]Replace"
-                    )
+                    ds_file = self._get_dsfile_by_id(file.file_id, ds_files)
+                    if not self._check_size(file, ds_file):
+                        file._unchanged_data = False
+                    else:
+                        # calculate checksum
+                        file.update_checksum_chunked()
+                        file.apply_checksum()
+                        file._unchanged_data = self._check_hashes(file, ds_file)
+                    if file._unchanged_data:
+                        table.add_row(
+                            file.file_name, "[bright_cyan]Exists", "[bright_black]Replace Meta"
+                        )
+                    else:
+                        table.add_row(
+                            file.file_name, "[bright_cyan]Exists", "[bright_black]Replace"
+                        )
                 else:
                     table.add_row(
                         file.file_name, "[bright_cyan]Exists", "[bright_black]Skipping"
@@ -295,6 +308,25 @@ class DVUploader(BaseModel):
                 return ds_file["dataFile"]["id"]
 
     @staticmethod
+    def _get_dsfile_by_id(
+        file_id: int,
+        ds_files: List[Dict],
+    ) -> Optional[Dict]:
+        """
+        Retrieves a dataset file dictionary by its ID.
+
+        Args:
+            file_id (int): The ID of the file to retrieve.
+            ds_files (List[Dict]): List of dictionary objects representing dataset files.
+
+        Returns:
+            Optional[Dict]: The dataset file dictionary if found, None otherwise.
+        """
+        for ds_file in ds_files:
+            if ds_file["dataFile"]["id"] == file_id:
+                return ds_file
+
+    @staticmethod
     def _check_hashes(file: File, dsFile: Dict):
         """
         Checks if a file has the same checksum as a file in the dataset.
@@ -320,6 +352,20 @@ class DVUploader(BaseModel):
             and file.checksum.type == hash_algo
             and path == os.path.join(file.directory_label, file.file_name)  # type: ignore
         )
+
+    @staticmethod
+    def _check_size(file: File, dsFile: Dict) -> bool:
+        """
+        Checks if the file size matches the size of the file in the dataset.
+
+        Args:
+            file (File): The file to check.
+            dsFile (Dict): The file in the dataset to compare against.
+
+        Returns:
+            bool: True if the sizes match, False otherwise.
+        """
+        return dsFile["dataFile"]["filesize"] == file._size
 
     @staticmethod
     def _has_direct_upload(

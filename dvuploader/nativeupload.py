@@ -91,14 +91,29 @@ async def native_upload(
         "proxy": proxy,
     }
 
+    files_new = [file for file in files if not file.to_replace]
+    files_new_metadata = [file for file in files if file.to_replace and file._unchanged_data]
+    files_replace = [file for file in files if file.to_replace and not file._unchanged_data]
+
     async with httpx.AsyncClient(**session_params) as session:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            packages = distribute_files(files)
+            packages = distribute_files(files_new)
             packaged_files = _zip_packages(
                 packages=packages,
                 tmp_dir=tmp_dir,
                 progress=progress,
             )
+
+            replacable_files = [
+                (
+                    progress.add_task(
+                        file.file_name,  # type: ignore
+                        total=file._size,
+                    ),
+                    file
+                )
+                for file in files_replace
+            ]
 
             tasks = [
                 _single_native_upload(
@@ -108,7 +123,7 @@ async def native_upload(
                     pbar=pbar,  # type: ignore
                     progress=progress,
                 )
-                for pbar, file in packaged_files
+                for pbar, file in (packaged_files + replacable_files)
             ]
 
             responses = await asyncio.gather(*tasks)
@@ -116,7 +131,7 @@ async def native_upload(
 
             await _update_metadata(
                 session=session,
-                files=files,
+                files=files_new + files_new_metadata,
                 persistent_id=persistent_id,
                 dataverse_url=dataverse_url,
                 api_token=api_token,
@@ -167,6 +182,10 @@ def _zip_packages(
     for index, package in packages:
         if len(package) == 1:
             file = package[0]
+            pbar = progress.add_task(
+                file.file_name,  # type: ignore
+                total=file._size,
+            )
         else:
             path = zip_files(
                 files=package,
@@ -178,10 +197,10 @@ def _zip_packages(
             file.extract_file_name()
             file.mimeType = "application/zip"
 
-        pbar = progress.add_task(
-            file.file_name,  # type: ignore
-            total=file._size,
-        )
+            pbar = progress.add_task(
+                f"Zip package of {len(package)} files",  # type: ignore
+                total=file._size,
+            )
 
         files.append((pbar, file))
 
@@ -401,7 +420,6 @@ async def _update_single_metadata(
     json_data = _get_json_data(file)
 
     del json_data["forceReplace"]
-    del json_data["restrict"]
 
     # Send metadata as a readable byte stream
     # This is a workaround since "data" and "json"
