@@ -29,6 +29,7 @@ class File(BaseModel):
 
     Private Attributes:
         _size (int): Size of the file in bytes.
+        _unchanged_data (bool): Indicates if the file data has not changed since last upload.
 
     Methods:
         extract_file_name(): Extracts filename from filepath and initializes file handler.
@@ -57,6 +58,7 @@ class File(BaseModel):
     tab_ingest: bool = Field(default=True, alias="tabIngest")
 
     _size: int = PrivateAttr(default=0)
+    _unchanged_data: bool = PrivateAttr(default=False)
 
     def extract_file_name(self):
         """
@@ -110,6 +112,7 @@ class File(BaseModel):
         """
         Calculates and applies the checksum for the file.
         Must be called after extract_file_name() has initialized the checksum.
+        And all data has been fed into the checksum hash function.
 
         Raises:
             AssertionError: If checksum is not initialized or hash function is not set.
@@ -118,6 +121,36 @@ class File(BaseModel):
         assert self.checksum._hash_fun is not None, "Checksum hash function is not set."
 
         self.checksum.apply_checksum()
+
+
+    def update_checksum_chunked(self, blocksize=2**20):
+        """Updates the checksum with data read from a file-like object in chunks.
+
+        Args:
+            blocksize (int, optional): Size of chunks to read. Defaults to 1MB (2**20)
+
+        Raises:
+            AssertionError: If the hash function has not been initialized
+
+        Note:
+            This method resets the file position to the start after reading.
+        """
+        assert self.handler is not None, "File handler is not initialized."
+        assert self.checksum is not None, "Checksum is not initialized."
+        assert self.checksum._hash_fun is not None, "Checksum hash function is not set."
+
+        while True:
+            buf = self.handler.read(blocksize)
+
+            if not isinstance(buf, bytes):
+                buf = buf.encode()
+
+            if not buf:
+                break
+            self.checksum._hash_fun.update(buf)
+
+        self.handler.seek(0)
+
 
     def __del__(self):
         if self.handler is not None:
