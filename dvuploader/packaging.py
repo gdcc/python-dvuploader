@@ -95,7 +95,7 @@ def zip_files(
     with zipfile.ZipFile(path, "w") as zip_file:
         for file in files:
             zip_file.writestr(
-                data=file.handler.read(),  # type: ignore
+                data=file.get_handler().read(),  # type: ignore
                 zinfo_or_arcname=_create_arcname(file),
             )
             file._is_inside_zip = True

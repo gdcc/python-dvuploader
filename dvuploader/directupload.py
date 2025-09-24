@@ -250,7 +250,7 @@ async def _upload_singlepart(
         "headers": headers,
         "url": ticket["url"],
         "content": upload_bytes(
-            file=file.handler,  # type: ignore
+            file=file.get_handler(),  # type: ignore
             progress=progress,
             pbar=pbar,
             hash_func=file.checksum._hash_fun,
