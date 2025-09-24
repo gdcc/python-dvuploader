@@ -368,7 +368,14 @@ async def _update_metadata(
     tasks = []
 
     for file in files:
-        dv_path = os.path.join(file.directory_label, file.file_name)  # type: ignore
+        if file.directory_label:
+            dv_path = os.path.join(file.directory_label, file.file_name)  # type: ignore
+        elif file.file_name:
+            dv_path = file.file_name
+        else:
+            raise ValueError(
+                f"File {file.file_name} has no directory label or file name."
+            )
 
         try:
             if _tab_extension(dv_path) in file_mapping:
