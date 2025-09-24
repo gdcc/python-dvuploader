@@ -26,10 +26,15 @@ class TestParseYAMLConfig:
         assert cli_input.dataverse_url == "https://demo.dataverse.org/"
         assert cli_input.persistent_id == "doi:10.70122/XXX/XXXXX"
 
+        actual_files = []
+        for file in cli_input.files:
+            if file.directory_label:
+                actual_files.append((file.directory_label, file.file_name))
+            else:
+                actual_files.append(("", file.file_name))
+
         assert len(cli_input.files) == 2
-        assert sorted(
-            [(file.directory_label, file.file_name) for file in cli_input.files]
-        ) == sorted(expected_files)
+        assert sorted(actual_files) == sorted(expected_files)
 
 
 class TestCLIMain:

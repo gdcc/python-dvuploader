@@ -249,11 +249,15 @@ class DVUploader(BaseModel):
                         file._unchanged_data = self._check_hashes(file, ds_file)
                     if file._unchanged_data:
                         table.add_row(
-                            file.file_name, "[bright_cyan]Exists", "[bright_black]Replace Meta"
+                            file.file_name,
+                            "[bright_cyan]Exists",
+                            "[bright_black]Replace Meta",
                         )
                     else:
                         table.add_row(
-                            file.file_name, "[bright_cyan]Exists", "[bright_black]Replace"
+                            file.file_name,
+                            "[bright_cyan]Exists",
+                            "[bright_black]Replace",
                         )
                 else:
                     table.add_row(
@@ -302,7 +306,15 @@ class DVUploader(BaseModel):
         # Find the file that matches label and directory_label
         for ds_file in ds_files:
             dspath = os.path.join(ds_file.get("directoryLabel", ""), ds_file["label"])
-            fpath = os.path.join(file.directory_label, file.file_name)  # type: ignore
+
+            if file.directory_label:
+                fpath = os.path.join(file.directory_label, file.file_name)  # type: ignore
+            elif file.file_name:
+                fpath = file.file_name
+            else:
+                raise ValueError(
+                    f"File {file.file_name} has no directory label or file name."
+                )
 
             if dspath == fpath:
                 return ds_file["dataFile"]["id"]
