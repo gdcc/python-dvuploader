@@ -92,8 +92,12 @@ async def native_upload(
     }
 
     files_new = [file for file in files if not file.to_replace]
-    files_new_metadata = [file for file in files if file.to_replace and file._unchanged_data]
-    files_replace = [file for file in files if file.to_replace and not file._unchanged_data]
+    files_new_metadata = [
+        file for file in files if file.to_replace and file._unchanged_data
+    ]
+    files_replace = [
+        file for file in files if file.to_replace and not file._unchanged_data
+    ]
 
     # These are not in a package but need a metadtata update, ensure even for zips
     for file in files_new_metadata:
@@ -114,7 +118,7 @@ async def native_upload(
                         file.file_name,  # type: ignore
                         total=file._size,
                     ),
-                    file
+                    file,
                 )
                 for file in files_replace
             ]
@@ -325,17 +329,13 @@ def _get_json_data(file: File) -> Dict:
         Dict: Dictionary containing file metadata for the upload request.
     """
 
-    metadata = {
-        "description": file.description,
-        "categories": file.categories,
-        "restrict": file.restrict,
-        "forceReplace": True,
+    include = {
+        "description",
+        "categories",
+        "restrict",
+        "tabIngest",
     }
-
-    if file.directory_label:
-        metadata["directoryLabel"] = file.directory_label
-
-    return metadata
+    return file.model_dump(by_alias=True, exclude_none=True, include=include)
 
 
 async def _update_metadata(
@@ -374,8 +374,10 @@ async def _update_metadata(
             if _tab_extension(dv_path) in file_mapping:
                 file_id = file_mapping[_tab_extension(dv_path)]
             elif (
-                file.file_name and _is_zip(file.file_name)
-                and not file._is_inside_zip and not file._enforce_metadata_update
+                file.file_name
+                and _is_zip(file.file_name)
+                and not file._is_inside_zip
+                and not file._enforce_metadata_update
             ):
                 # When the file is a zip package it will be unpacked and thus
                 # the expected file name of the zip will not be in the
@@ -425,8 +427,6 @@ async def _update_single_metadata(
     """
 
     json_data = _get_json_data(file)
-
-    del json_data["forceReplace"]
 
     # Send metadata as a readable byte stream
     # This is a workaround since "data" and "json"
