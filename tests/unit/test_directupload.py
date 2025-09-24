@@ -4,6 +4,7 @@ from rich.progress import Progress
 from dvuploader.directupload import (
     _add_files_to_ds,
     _validate_ticket_response,
+    _prepare_registration,
 )
 
 from dvuploader.file import File
@@ -128,3 +129,50 @@ class Test_ValidateTicketResponse:
         }
         with pytest.raises(AssertionError):
             _validate_ticket_response(response)
+
+
+class TestPrepareRegistration:
+    def test_tab_ingest_is_set_correctly(self):
+        files = [
+            File(filepath="tests/fixtures/add_dir_files/somefile.txt"),
+            File(
+                filepath="tests/fixtures/add_dir_files/somefile.txt",
+                tab_ingest=False,  # type: ignore
+            ),
+            File(
+                filepath="tests/fixtures/add_dir_files/somefile.txt",
+                restrict=True,
+            ),
+            File(
+                filepath="tests/fixtures/add_dir_files/somefile.txt",
+                categories=["Test file"],
+            ),
+        ]
+        registration = _prepare_registration(files, use_replace=False)
+        expected_registration = [
+            {
+                "categories": ["DATA"],
+                "mimeType": "application/octet-stream",
+                "restrict": False,
+                "tabIngest": True,
+            },
+            {
+                "categories": ["DATA"],
+                "mimeType": "application/octet-stream",
+                "restrict": False,
+                "tabIngest": False,
+            },
+            {
+                "categories": ["DATA"],
+                "mimeType": "application/octet-stream",
+                "restrict": True,
+                "tabIngest": True,
+            },
+            {
+                "categories": ["Test file"],
+                "mimeType": "application/octet-stream",
+                "restrict": False,
+                "tabIngest": True,
+            },
+        ]
+        assert registration == expected_registration
