@@ -460,6 +460,76 @@ class TestNativeUpload:
 
         assert sorted([file["label"] for file in files]) == sorted(expected_files)
 
+    def test_metadata_with_zip_files_in_package(self, credentials):
+        BASE_URL, API_TOKEN = credentials
+
+        # Create Dataset
+        pid = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+        )
+
+        # Arrange
+        files = [
+            File(filepath="tests/fixtures/archive.zip",
+                  dv_dir="subdir2",
+                  description="This file should not be unzipped",
+                  categories=["Test file"]
+            ),
+            File(filepath="tests/fixtures/add_dir_files/somefile.txt",
+                  dv_dir="subdir",
+                  description="A simple text file",
+                  categories=["Test file"]
+            ),
+        ]
+
+        # Act
+        uploader = DVUploader(files=files)
+        uploader.upload(
+            persistent_id=pid,
+            api_token=API_TOKEN,
+            dataverse_url=BASE_URL,
+            n_parallel_uploads=10,
+        )
+
+        # Assert
+        files = retrieve_dataset_files(
+            dataverse_url=BASE_URL,
+            persistent_id=pid,
+            api_token=API_TOKEN,
+        )
+
+        assert len(files) == 2, f"Expected 2 files, got {len(files)}"
+
+        expected_files = [
+            {
+                "label": "archive.zip",
+                "description": "This file should not be unzipped",
+                "categories": ["Test file"]
+            },
+            {
+                "label": "somefile.txt",
+                "description": "A simple text file",
+                "categories": ["Test file"]
+            },
+        ]
+
+        files_as_expected = sorted(
+            [
+                {
+                    k: (f[k] if k in f else None)
+                    for k in expected_files[0].keys()
+                }
+                for f in files
+            ],
+            key=lambda x: x["label"]
+        )
+        assert files_as_expected == expected_files, (
+            f"File metadata not as expected: {json.dumps(files, indent=2)}"
+        )
+
+
     def test_too_many_zip_files(
         self,
         credentials,
