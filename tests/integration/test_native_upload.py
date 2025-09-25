@@ -1,13 +1,12 @@
-from io import BytesIO
 import json
 import os
 import tempfile
+from io import BytesIO
 
 import pytest
 
 from dvuploader.dvuploader import DVUploader
 from dvuploader.file import File
-
 from dvuploader.utils import add_directory, retrieve_dataset_files
 from tests.conftest import create_dataset, create_mock_file, create_mock_tabular_file
 
@@ -472,15 +471,17 @@ class TestNativeUpload:
 
         # Arrange
         files = [
-            File(filepath="tests/fixtures/archive.zip",
-                  dv_dir="subdir2",
-                  description="This file should not be unzipped",
-                  categories=["Test file"]
+            File(
+                filepath="tests/fixtures/archive.zip",
+                dv_dir="subdir2",
+                description="This file should not be unzipped",
+                categories=["Test file"],
             ),
-            File(filepath="tests/fixtures/add_dir_files/somefile.txt",
-                  dv_dir="subdir",
-                  description="A simple text file",
-                  categories=["Test file"]
+            File(
+                filepath="tests/fixtures/add_dir_files/somefile.txt",
+                dv_dir="subdir",
+                description="A simple text file",
+                categories=["Test file"],
             ),
         ]
 
@@ -506,29 +507,25 @@ class TestNativeUpload:
             {
                 "label": "archive.zip",
                 "description": "This file should not be unzipped",
-                "categories": ["Test file"]
+                "categories": ["Test file"],
             },
             {
                 "label": "somefile.txt",
                 "description": "A simple text file",
-                "categories": ["Test file"]
+                "categories": ["Test file"],
             },
         ]
 
         files_as_expected = sorted(
             [
-                {
-                    k: (f[k] if k in f else None)
-                    for k in expected_files[0].keys()
-                }
+                {k: (f[k] if k in f else None) for k in expected_files[0].keys()}
                 for f in files
             ],
-            key=lambda x: x["label"]
+            key=lambda x: x["label"],
         )
         assert files_as_expected == expected_files, (
             f"File metadata not as expected: {json.dumps(files, indent=2)}"
         )
-
 
     def test_too_many_zip_files(
         self,
@@ -558,3 +555,37 @@ class TestNativeUpload:
                 dataverse_url=BASE_URL,
                 n_parallel_uploads=10,
             )
+
+    @pytest.mark.expensive
+    def test_native_upload_with_large_file(
+        self,
+        credentials,
+    ):
+        BASE_URL, API_TOKEN = credentials
+
+        # Create Dataset
+        pid = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "large_file.bin")
+            self._create_file(1024 * 1024 * 2, path)
+
+            files = [
+                File(filepath=path),
+            ]
+
+            uploader = DVUploader(files=files)
+            uploader.upload(
+                persistent_id=pid,
+                api_token=API_TOKEN,
+                dataverse_url=BASE_URL,
+                n_parallel_uploads=1,
+            )
+
+    def _create_file(self, size: int, path: str):
+        with open(path, "wb") as f:
+            f.write(b"\0" * size)
