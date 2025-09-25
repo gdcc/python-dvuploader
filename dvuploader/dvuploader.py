@@ -1,15 +1,15 @@
 import asyncio
-from urllib.parse import urljoin
-import httpx
 import os
-import rich
 from typing import Dict, List, Optional
+from urllib.parse import urljoin
 
+import httpx
+import rich
 from pydantic import BaseModel
-from rich.progress import Progress
-from rich.table import Table
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import Progress
+from rich.table import Table
 
 from dvuploader.directupload import (
     TICKET_ENDPOINT,
@@ -146,6 +146,7 @@ class DVUploader(BaseModel):
                         n_parallel_uploads=n_parallel_uploads,
                         progress=progress,
                         pbars=pbars,
+                        proxy=proxy,
                     )
                 )
         else:
@@ -159,6 +160,7 @@ class DVUploader(BaseModel):
                         pbars=pbars,
                         progress=progress,
                         n_parallel_uploads=n_parallel_uploads,
+                        proxy=proxy,
                     )
                 )
 
@@ -249,11 +251,15 @@ class DVUploader(BaseModel):
                         file._unchanged_data = self._check_hashes(file, ds_file)
                     if file._unchanged_data:
                         table.add_row(
-                            file.file_name, "[bright_cyan]Exists", "[bright_black]Replace Meta"
+                            file.file_name,
+                            "[bright_cyan]Exists",
+                            "[bright_black]Replace Meta",
                         )
                     else:
                         table.add_row(
-                            file.file_name, "[bright_cyan]Exists", "[bright_black]Replace"
+                            file.file_name,
+                            "[bright_cyan]Exists",
+                            "[bright_black]Replace",
                         )
                 else:
                     table.add_row(
