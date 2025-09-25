@@ -1,14 +1,14 @@
 import asyncio
-from io import BytesIO
-from pathlib import Path
-import httpx
 import json
 import os
 import tempfile
+from io import BytesIO
+from pathlib import Path
+from typing import IO, AsyncGenerator, Dict, List, Optional, Tuple
+
+import httpx
 import rich
 import tenacity
-from typing import List, Optional, Tuple, Dict
-
 from rich.progress import Progress, TaskID
 
 from dvuploader.file import File
@@ -55,6 +55,36 @@ TABULAR_EXTENSIONS = [
 ZIP_LIMIT_MESSAGE = "The number of files in the zip archive is over the limit"
 
 
+class _ProgressFileWrapper:
+    """
+    Wrap a binary file-like object and update a rich progress bar on reads.
+    httpx's multipart expects a synchronous file-like object exposing .read().
+    """
+
+    def __init__(
+        self,
+        file: IO[bytes],
+        progress: Progress,
+        pbar: TaskID,
+        chunk_size: int = 1024 * 1024,
+    ):
+        self._file = file
+        self._progress = progress
+        self._pbar = pbar
+        self._chunk_size = chunk_size
+
+    def read(self, size: int = -1) -> bytes:
+        if size is None or size < 0:
+            size = self._chunk_size
+        data = self._file.read(size)
+        if data:
+            self._progress.update(self._pbar, advance=len(data))
+        return data
+
+    def __getattr__(self, name):
+        return getattr(self._file, name)
+
+
 async def native_upload(
     files: List[File],
     dataverse_url: str,
@@ -92,8 +122,12 @@ async def native_upload(
     }
 
     files_new = [file for file in files if not file.to_replace]
-    files_new_metadata = [file for file in files if file.to_replace and file._unchanged_data]
-    files_replace = [file for file in files if file.to_replace and not file._unchanged_data]
+    files_new_metadata = [
+        file for file in files if file.to_replace and file._unchanged_data
+    ]
+    files_replace = [
+        file for file in files if file.to_replace and not file._unchanged_data
+    ]
 
     # These are not in a package but need a metadtata update, ensure even for zips
     for file in files_new_metadata:
@@ -114,7 +148,7 @@ async def native_upload(
                         file.file_name,  # type: ignore
                         total=file._size,
                     ),
-                    file
+                    file,
                 )
                 for file in files_replace
             ]
@@ -233,7 +267,9 @@ def _reset_progress(
 @tenacity.retry(
     wait=RETRY_STRAT,
     stop=tenacity.stop_after_attempt(MAX_RETRIES),
-    retry=tenacity.retry_if_exception_type((httpx.HTTPStatusError,)),
+    retry=tenacity.retry_if_exception_type(
+        (httpx.HTTPStatusError, httpx.ReadError, httpx.RequestError)
+    ),
 )
 async def _single_native_upload(
     session: httpx.AsyncClient,
@@ -270,10 +306,12 @@ async def _single_native_upload(
 
     json_data = _get_json_data(file)
 
+    assert file.handler is not None, "File handler is required for native upload"
+
     files = {
         "file": (
             file.file_name,
-            file.handler,
+            _ProgressFileWrapper(file.handler, progress, pbar),  # type: ignore[arg-type]
             file.mimeType,
         ),
         "jsonData": (
@@ -285,7 +323,7 @@ async def _single_native_upload(
 
     response = await session.post(
         endpoint,
-        files=files,  # type: ignore
+        files=files,
     )
 
     if response.status_code == 400 and response.json()["message"].startswith(
@@ -374,8 +412,10 @@ async def _update_metadata(
             if _tab_extension(dv_path) in file_mapping:
                 file_id = file_mapping[_tab_extension(dv_path)]
             elif (
-                file.file_name and _is_zip(file.file_name)
-                and not file._is_inside_zip and not file._enforce_metadata_update
+                file.file_name
+                and _is_zip(file.file_name)
+                and not file._is_inside_zip
+                and not file._enforce_metadata_update
             ):
                 # When the file is a zip package it will be unpacked and thus
                 # the expected file name of the zip will not be in the
