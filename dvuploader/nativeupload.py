@@ -273,11 +273,12 @@ async def _single_native_upload(
         )
 
     json_data = _get_json_data(file)
+    handler = file.get_handler()
 
     files = {
         "file": (
             file.file_name,
-            file.handler,
+            handler,
             file.mimeType,
         ),
         "jsonData": (
