@@ -330,17 +330,13 @@ def _get_json_data(file: File) -> Dict:
         Dict: Dictionary containing file metadata for the upload request.
     """
 
-    metadata = {
-        "description": file.description,
-        "categories": file.categories,
-        "restrict": file.restrict,
-        "forceReplace": True,
+    include = {
+        "description",
+        "categories",
+        "restrict",
+        "tabIngest",
     }
-
-    if file.directory_label:
-        metadata["directoryLabel"] = file.directory_label
-
-    return metadata
+    return file.model_dump(by_alias=True, exclude_none=True, include=include)
 
 
 async def _update_metadata(
@@ -373,7 +369,14 @@ async def _update_metadata(
     tasks = []
 
     for file in files:
-        dv_path = os.path.join(file.directory_label, file.file_name)  # type: ignore
+        if file.directory_label:
+            dv_path = os.path.join(file.directory_label, file.file_name)  # type: ignore
+        elif file.file_name:
+            dv_path = file.file_name
+        else:
+            raise ValueError(
+                f"File {file.file_name} has no directory label or file name."
+            )
 
         try:
             if _tab_extension(dv_path) in file_mapping:
@@ -432,8 +435,6 @@ async def _update_single_metadata(
     """
 
     json_data = _get_json_data(file)
-
-    del json_data["forceReplace"]
 
     # Send metadata as a readable byte stream
     # This is a workaround since "data" and "json"
