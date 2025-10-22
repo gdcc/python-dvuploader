@@ -173,6 +173,7 @@ async def native_upload(
                 persistent_id=persistent_id,
                 dataverse_url=dataverse_url,
                 api_token=api_token,
+                proxy=proxy,
             )
 
 
@@ -382,6 +383,7 @@ async def _update_metadata(
     dataverse_url: str,
     api_token: str,
     persistent_id: str,
+    proxy: Optional[str],
 ):
     """
     Updates the metadata of the given files in a Dataverse repository.
@@ -401,6 +403,7 @@ async def _update_metadata(
         persistent_id=persistent_id,
         dataverse_url=dataverse_url,
         api_token=api_token,
+        proxy=proxy,
     )
 
     tasks = []
@@ -493,6 +496,7 @@ def _retrieve_file_ids(
     persistent_id: str,
     dataverse_url: str,
     api_token: str,
+    proxy: Optional[str] = None,
 ) -> Dict[str, str]:
     """
     Retrieves the file IDs of files in a dataset.
@@ -501,7 +505,7 @@ def _retrieve_file_ids(
         persistent_id (str): The persistent identifier of the dataset.
         dataverse_url (str): The URL of the Dataverse repository.
         api_token (str): The API token of the Dataverse repository.
-
+        proxy (str): The proxy to use for the request.
     Returns:
         Dict[str, str]: Dictionary mapping file paths to their IDs.
     """
@@ -511,6 +515,7 @@ def _retrieve_file_ids(
         persistent_id=persistent_id,
         dataverse_url=dataverse_url,
         api_token=api_token,
+        proxy=proxy,
     )
 
     return _create_file_id_path_mapping(ds_files)
