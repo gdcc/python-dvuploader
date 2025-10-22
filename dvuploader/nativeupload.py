@@ -1,14 +1,14 @@
 import asyncio
-from io import BytesIO
-from pathlib import Path
-import httpx
 import json
 import os
 import tempfile
+from io import BytesIO
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+import httpx
 import rich
 import tenacity
-from typing import List, Optional, Tuple, Dict
-
 from rich.progress import Progress, TaskID
 
 from dvuploader.file import File
@@ -86,7 +86,12 @@ async def native_upload(
     session_params = {
         "base_url": dataverse_url,
         "headers": {"X-Dataverse-key": api_token},
-        "timeout": None,
+        "timeout": httpx.Timeout(
+            None,
+            read=None,
+            write=None,
+            connect=None,
+        ),
         "limits": httpx.Limits(max_connections=n_parallel_uploads),
         "proxy": proxy,
     }
