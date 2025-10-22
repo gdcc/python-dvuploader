@@ -105,6 +105,7 @@ class DVUploader(BaseModel):
             persistent_id=persistent_id,
             api_token=api_token,
             replace_existing=replace_existing,
+            proxy=proxy,
         )
 
         # Sort files by size
@@ -198,7 +199,8 @@ class DVUploader(BaseModel):
         persistent_id: str,
         api_token: str,
         replace_existing: bool,
-    ):
+        proxy: Optional[str] = None,
+    ) -> None:
         """
         Checks for duplicate files in the dataset by comparing paths and filenames.
 
@@ -207,7 +209,7 @@ class DVUploader(BaseModel):
             persistent_id (str): The persistent ID of the dataset.
             api_token (str): The API token for accessing the Dataverse repository.
             replace_existing (bool): Whether to replace files that already exist.
-
+            proxy (Optional[str]): The proxy to use for the request.
         Returns:
             None
         """
@@ -216,6 +218,7 @@ class DVUploader(BaseModel):
             dataverse_url=dataverse_url,
             persistent_id=persistent_id,
             api_token=api_token,
+            proxy=proxy,
         )
 
         table = Table(
@@ -241,14 +244,14 @@ class DVUploader(BaseModel):
                 to_skip.append(file.file_id)
 
                 if replace_existing:
-                    ds_file = self._get_dsfile_by_id(file.file_id, ds_files)
-                    if not self._check_size(file, ds_file):
+                    ds_file = self._get_dsfile_by_id(file.file_id, ds_files)  # type: ignore
+                    if not self._check_size(file, ds_file):  # type: ignore
                         file._unchanged_data = False
                     else:
                         # calculate checksum
                         file.update_checksum_chunked()
                         file.apply_checksum()
-                        file._unchanged_data = self._check_hashes(file, ds_file)
+                        file._unchanged_data = self._check_hashes(file, ds_file)  # type: ignore
                     if file._unchanged_data:
                         table.add_row(
                             file.file_name,
