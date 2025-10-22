@@ -1,7 +1,13 @@
 import os
-import pytest
-import httpx
 import random
+import signal
+import socket
+import subprocess
+import sys
+import time
+
+import httpx
+import pytest
 
 
 @pytest.fixture
@@ -39,7 +45,7 @@ def create_dataset(
     response = httpx.post(
         url=url,
         headers={"X-Dataverse-key": api_token},
-        data=open("./tests/fixtures/create_dataset.json", "rb"),
+        data=open("./tests/fixtures/create_dataset.json", "rb"),  # type: ignore[reportUnboundVariable]
     )
 
     response.raise_for_status()
@@ -99,3 +105,78 @@ def create_mock_tabular_file(
             )
 
     return path
+
+
+def _wait_for_port(host: str, port: int, timeout: float = 5.0) -> None:
+    """Wait until a TCP port is open on host within timeout seconds."""
+    start = time.time()
+    while time.time() - start < timeout:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.2)
+            try:
+                if sock.connect_ex((host, port)) == 0:
+                    return
+            except OSError:
+                pass
+        time.sleep(0.1)
+    raise TimeoutError(f"Proxy did not start on {host}:{port} within {timeout}s")
+
+
+@pytest.fixture(scope="function")
+def http_proxy_server():
+    """Start a local HTTP proxy on 127.0.0.1:3128 for tests that require it."""
+    host = "127.0.0.1"
+    port = 3128
+
+    # Ensure dependency is available
+    try:
+        import proxy  # noqa: F401
+    except Exception as exc:  # pragma: no cover
+        pytest.skip(
+            f"Skipping: proxy module not available ({exc}). Install 'proxy.py'."
+        )
+
+    # Launch proxy.py as a subprocess to avoid API instability between versions
+    cmd = [
+        sys.executable,
+        "-m",
+        "proxy",
+        "--hostname",
+        host,
+        "--port",
+        str(port),
+        "--num-workers",
+        "1",
+        "--log-level",
+        "WARNING",
+    ]
+
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    try:
+        try:
+            _wait_for_port(host, port, timeout=10.0)
+        except TimeoutError:
+            # Collect logs for debugging and skip the test instead of failing hard
+            try:
+                stdout, stderr = proc.communicate(timeout=1)
+            except Exception:
+                stdout, stderr = (b"", b"")
+            msg = (
+                "Proxy did not start on "
+                f"{host}:{port}. stderr: {stderr.decode(errors='ignore').strip()}"
+            )
+            pytest.skip(msg)
+            return
+
+        yield f"http://{host}:{port}"
+    finally:
+        if proc.poll() is None:
+            try:
+                proc.send_signal(signal.SIGTERM)
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+            except Exception:
+                proc.kill()

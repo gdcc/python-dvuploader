@@ -110,9 +110,10 @@ class TestNativeUpload:
     def test_native_upload_with_proxy(
         self,
         credentials,
+        http_proxy_server,
     ):
         BASE_URL, API_TOKEN = credentials
-        proxy = "http://127.0.0.1:3128"
+        proxy = http_proxy_server
 
         with tempfile.TemporaryDirectory() as directory:
             # Arrange
