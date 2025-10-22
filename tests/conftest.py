@@ -159,9 +159,9 @@ def http_proxy_server():
         except TimeoutError:
             # Collect logs for debugging and skip the test instead of failing hard
             try:
-                stdout, stderr = proc.communicate(timeout=1)
+                _, stderr = proc.communicate(timeout=1)
             except Exception:
-                stdout, stderr = (b"", b"")
+                _, stderr = (b"", b"")
             msg = (
                 "Proxy did not start on "
                 f"{host}:{port}. stderr: {stderr.decode(errors='ignore').strip()}"

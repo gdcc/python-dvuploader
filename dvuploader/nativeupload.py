@@ -4,7 +4,7 @@ import os
 import tempfile
 from io import BytesIO
 from pathlib import Path
-from typing import IO, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import IO, Dict, List, Optional, Tuple
 
 import httpx
 import rich
