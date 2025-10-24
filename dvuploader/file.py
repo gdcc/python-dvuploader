@@ -44,20 +44,72 @@ class File(BaseModel):
         arbitrary_types_allowed=True,
     )
 
-    filepath: str = Field(..., exclude=True)
-    handler: Union[BytesIO, StringIO, IO, None] = Field(default=None, exclude=True)
-    description: str = ""
-    directory_label: str = Field(default="", alias="directoryLabel")
-    mimeType: str = "application/octet-stream"
-    categories: Optional[List[str]] = ["DATA"]
-    restrict: bool = False
-    checksum_type: ChecksumTypes = Field(default=ChecksumTypes.MD5, exclude=True)
-    storageIdentifier: Optional[str] = None
-    file_name: Optional[str] = Field(default=None, alias="fileName")
-    checksum: Optional[Checksum] = None
-    to_replace: bool = False
-    file_id: Optional[Union[str, int]] = Field(default=None, alias="fileToReplaceId")
-    tab_ingest: bool = Field(default=True, alias="tabIngest")
+    filepath: str = Field(
+        ...,
+        exclude=True,
+        description="The path to the file",
+    )
+    handler: Union[BytesIO, StringIO, IO, None] = Field(
+        default=None,
+        exclude=True,
+        description="File handler for reading the file contents",
+    )
+    description: Optional[str] = Field(
+        default=None,
+        alias="description",
+        description="The description of the file",
+    )
+    directory_label: Optional[str] = Field(
+        default=None,
+        alias="directoryLabel",
+        description="The label of the directory where the file is stored",
+    )
+    mimeType: str = Field(
+        default="application/octet-stream",
+        description="The MIME type of the file",
+    )
+    categories: Optional[List[str]] = Field(
+        default=["DATA"],
+        alias="categories",
+        description="The categories associated with the file",
+    )
+    restrict: bool = Field(
+        default=False,
+        alias="restrict",
+        description="Indicates if the file is restricted",
+    )
+    checksum_type: ChecksumTypes = Field(
+        default=ChecksumTypes.MD5,
+        exclude=True,
+        description="The type of checksum used for the file",
+    )
+    storageIdentifier: Optional[str] = Field(
+        default=None,
+        description="The identifier of the storage where the file is stored",
+    )
+    file_name: Optional[str] = Field(
+        default=None,
+        alias="fileName",
+        description="The name of the file",
+    )
+    checksum: Optional[Checksum] = Field(
+        default=None,
+        description="The checksum of the file",
+    )
+    file_id: Optional[Union[str, int]] = Field(
+        default=None,
+        alias="fileToReplaceId",
+        description="The ID of the file to replace",
+    )
+    tab_ingest: bool = Field(
+        default=True,
+        alias="tabIngest",
+        description="Indicates if tabular ingest should be performed",
+    )
+    to_replace: bool = Field(
+        default=False,
+        description="Indicates if the file should be replaced",
+    )
 
     _size: int = PrivateAttr(default=0)
     _unchanged_data: bool = PrivateAttr(default=False)
@@ -126,7 +178,6 @@ class File(BaseModel):
 
         self.checksum.apply_checksum()
 
-
     def update_checksum_chunked(self, blocksize=2**20):
         """Updates the checksum with data read from a file-like object in chunks.
 
@@ -154,7 +205,6 @@ class File(BaseModel):
             self.checksum._hash_fun.update(buf)
 
         self.handler.seek(0)
-
 
     def __del__(self):
         if self.handler is not None:
