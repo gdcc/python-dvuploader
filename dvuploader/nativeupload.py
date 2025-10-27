@@ -459,7 +459,16 @@ async def _update_single_metadata(
     else:
         await asyncio.sleep(1.0)
 
-    raise ValueError(f"Failed to update metadata for file {file.file_name}.")
+    if "message" in response.json():
+        # If the response is a JSON object, we can get the error message from the "message" key.
+        error_message = response.json()["message"]
+    else:
+        # If the response is not a JSON object, we can get the error message from the response text.
+        error_message = response.text
+
+    raise ValueError(
+        f"Failed to update metadata for file {file.file_name}: {error_message}"
+    )
 
 
 def _retrieve_file_ids(
