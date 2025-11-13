@@ -30,6 +30,11 @@ def distribute_files(dv_files: List[File]) -> List[Tuple[int, List[File]]]:
     current_size = 0
     for file in dv_files:
         if file._size > MAXIMUM_PACKAGE_SIZE:
+            if current_package:
+                current_package, current_size, package_index = _append_and_reset(
+                    (package_index, current_package),
+                    packages,
+                )
             current_package, current_size, package_index = _append_and_reset(
                 (package_index, [file]),
                 packages,
