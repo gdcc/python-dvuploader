@@ -204,7 +204,7 @@ docker compose \
 
 ```bash
 export BASE_URL=http://localhost:8080
-export $(grep "API_TOKEN" "dv/bootstrap.exposed.env")
+export API_TOKEN=XXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
 export DVUPLOADER_TESTING=true
 ```
 
