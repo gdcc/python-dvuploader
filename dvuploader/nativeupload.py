@@ -13,7 +13,12 @@ from rich.progress import Progress, TaskID
 
 from dvuploader.file import File
 from dvuploader.packaging import distribute_files, zip_files
-from dvuploader.utils import build_url, retrieve_dataset_files
+from dvuploader.utils import (
+    build_url,
+    init_logging,
+    retrieve_dataset_files,
+    wait_for_dataset_unlock,
+)
 
 ##### CONFIGURATION #####
 
@@ -22,6 +27,8 @@ from dvuploader.utils import build_url, retrieve_dataset_files
 #
 # This will exponentially increase the wait time between retries.
 # The max wait time is 240 seconds per retry though.
+LOCK_WAIT_TIME = int(os.environ.get("DVUPLOADER_LOCK_WAIT_TIME", 1.5))
+LOCK_TIMEOUT = int(os.environ.get("DVUPLOADER_LOCK_TIMEOUT", 300))
 MAX_RETRIES = int(os.environ.get("DVUPLOADER_MAX_RETRIES", 15))
 MAX_RETRY_TIME = int(os.environ.get("DVUPLOADER_MAX_RETRY_TIME", 60))
 MIN_RETRY_TIME = int(os.environ.get("DVUPLOADER_MIN_RETRY_TIME", 1))
@@ -32,6 +39,9 @@ RETRY_STRAT = tenacity.wait_exponential(
     max=MAX_RETRY_TIME,
 )
 
+
+assert isinstance(LOCK_WAIT_TIME, int), "DVUPLOADER_LOCK_WAIT_TIME must be an integer"
+assert isinstance(LOCK_TIMEOUT, int), "DVUPLOADER_LOCK_TIMEOUT must be an integer"
 assert isinstance(MAX_RETRIES, int), "DVUPLOADER_MAX_RETRIES must be an integer"
 assert isinstance(MAX_RETRY_TIME, int), "DVUPLOADER_MAX_RETRY_TIME must be an integer"
 assert isinstance(MIN_RETRY_TIME, int), "DVUPLOADER_MIN_RETRY_TIME must be an integer"
@@ -85,6 +95,9 @@ class _ProgressFileWrapper:
         return getattr(self._file, name)
 
 
+init_logging()
+
+
 async def native_upload(
     files: List[File],
     dataverse_url: str,
@@ -116,7 +129,12 @@ async def native_upload(
     session_params = {
         "base_url": dataverse_url,
         "headers": {"X-Dataverse-key": api_token},
-        "timeout": None,
+        "timeout": httpx.Timeout(
+            None,
+            read=None,
+            write=None,
+            connect=None,
+        ),
         "limits": httpx.Limits(max_connections=n_parallel_uploads),
         "proxy": proxy,
     }
@@ -295,6 +313,14 @@ async def _single_native_upload(
             - dict: JSON response from the upload request
     """
 
+    # Check if the dataset is locked
+    await wait_for_dataset_unlock(
+        session=session,
+        persistent_id=persistent_id,
+        sleep_time=LOCK_WAIT_TIME,
+        timeout=LOCK_TIMEOUT,
+    )
+
     if not file.to_replace:
         endpoint = build_url(
             endpoint=NATIVE_UPLOAD_ENDPOINT,
@@ -306,13 +332,14 @@ async def _single_native_upload(
         )
 
     json_data = _get_json_data(file)
+    handler = file.get_handler()
 
-    assert file.handler is not None, "File handler is required for native upload"
+    assert handler is not None, "File handler is required for native upload"
 
     files = {
         "file": (
             file.file_name,
-            _ProgressFileWrapper(file.handler, progress, pbar),  # type: ignore[arg-type]
+            _ProgressFileWrapper(handler, progress, pbar),  # type: ignore[arg-type]
             file.mimeType,
         ),
         "jsonData": (
@@ -442,6 +469,7 @@ async def _update_metadata(
             session=session,
             url=NATIVE_METADATA_ENDPOINT.format(FILE_ID=file_id),
             file=file,
+            persistent_id=persistent_id,
         )
 
         tasks.append(task)
@@ -457,6 +485,7 @@ async def _update_single_metadata(
     session: httpx.AsyncClient,
     url: str,
     file: File,
+    persistent_id: str,
 ) -> None:
     """
     Updates the metadata of a single file in a Dataverse repository.
@@ -469,6 +498,13 @@ async def _update_single_metadata(
     Raises:
         ValueError: If metadata update fails.
     """
+
+    await wait_for_dataset_unlock(
+        session=session,
+        persistent_id=persistent_id,
+        sleep_time=LOCK_WAIT_TIME,
+        timeout=LOCK_TIMEOUT,
+    )
 
     json_data = _get_json_data(file)
 
@@ -490,7 +526,16 @@ async def _update_single_metadata(
     else:
         await asyncio.sleep(1.0)
 
-    raise ValueError(f"Failed to update metadata for file {file.file_name}.")
+    if "message" in response.json():
+        # If the response is a JSON object, we can get the error message from the "message" key.
+        error_message = response.json()["message"]
+    else:
+        # If the response is not a JSON object, we can get the error message from the response text.
+        error_message = response.text
+
+    raise ValueError(
+        f"Failed to update metadata for file {file.file_name}: {error_message}"
+    )
 
 
 def _retrieve_file_ids(

@@ -1,7 +1,7 @@
 import os
 import zipfile
-
 from typing import List, Tuple
+
 from dvuploader.file import File
 
 MAXIMUM_PACKAGE_SIZE = int(
@@ -30,6 +30,11 @@ def distribute_files(dv_files: List[File]) -> List[Tuple[int, List[File]]]:
     current_size = 0
     for file in dv_files:
         if file._size > MAXIMUM_PACKAGE_SIZE:
+            if current_package:
+                current_package, current_size, package_index = _append_and_reset(
+                    (package_index, current_package),
+                    packages,
+                )
             current_package, current_size, package_index = _append_and_reset(
                 (package_index, [file]),
                 packages,
@@ -37,10 +42,11 @@ def distribute_files(dv_files: List[File]) -> List[Tuple[int, List[File]]]:
             continue
 
         if current_size + file._size > MAXIMUM_PACKAGE_SIZE:
-            current_package, current_size, package_index = _append_and_reset(
-                (package_index, current_package),
-                packages,
-            )
+            if current_package:
+                current_package, current_size, package_index = _append_and_reset(
+                    (package_index, current_package),
+                    packages,
+                )
 
         current_package.append(file)
         current_size += file._size
@@ -95,7 +101,7 @@ def zip_files(
     with zipfile.ZipFile(path, "w") as zip_file:
         for file in files:
             zip_file.writestr(
-                data=file.handler.read(),  # type: ignore
+                data=file.get_handler().read(),  # type: ignore
                 zinfo_or_arcname=_create_arcname(file),
             )
             file._is_inside_zip = True
@@ -117,4 +123,5 @@ def _create_arcname(file: File) -> str:
     if file.directory_label is not None:
         return os.path.join(file.directory_label, file.file_name)  # type: ignore
     else:
+        assert file.file_name is not None, "File name is required"
         return file.file_name

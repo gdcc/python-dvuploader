@@ -474,13 +474,13 @@ class TestNativeUpload:
         files = [
             File(
                 filepath="tests/fixtures/archive.zip",
-                dv_dir="subdir2",
+                directoryLabel="subdir2",
                 description="This file should not be unzipped",
                 categories=["Test file"],
             ),
             File(
                 filepath="tests/fixtures/add_dir_files/somefile.txt",
-                dv_dir="subdir",
+                directoryLabel="subdir",
                 description="A simple text file",
                 categories=["Test file"],
             ),
@@ -517,12 +517,12 @@ class TestNativeUpload:
             },
         ]
 
-        files_as_expected = sorted(
+        files_as_expected = sorted(  # pyright: ignore[reportCallIssue]
             [
                 {k: (f[k] if k in f else None) for k in expected_files[0].keys()}
                 for f in files
             ],
-            key=lambda x: x["label"],
+            key=lambda x: x["label"],  # pyright: ignore[reportArgumentType]
         )
         assert files_as_expected == expected_files, (
             f"File metadata not as expected: {json.dumps(files, indent=2)}"

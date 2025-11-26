@@ -5,6 +5,7 @@ import socket
 import subprocess
 import sys
 import time
+from typing import Literal, Tuple, Union, overload
 
 import httpx
 import pytest
@@ -22,11 +23,30 @@ def credentials():
     return BASE_URL, API_TOKEN
 
 
+@overload
 def create_dataset(
     parent: str,
     server_url: str,
     api_token: str,
-):
+    return_id: Literal[False] = False,
+) -> str: ...
+
+
+@overload
+def create_dataset(
+    parent: str,
+    server_url: str,
+    api_token: str,
+    return_id: Literal[True],
+) -> Tuple[str, int]: ...
+
+
+def create_dataset(
+    parent: str,
+    server_url: str,
+    api_token: str,
+    return_id: bool = False,
+) -> Union[str, Tuple[str, int]]:
     """
     Creates a dataset in a Dataverse.
 
@@ -36,7 +56,7 @@ def create_dataset(
         api_token (str): The API token for authentication.
 
     Returns:
-        str: The persistent identifier of the created dataset.
+        Dict: The response from the Dataverse API.
     """
     if server_url.endswith("/"):
         server_url = server_url[:-1]
@@ -50,7 +70,10 @@ def create_dataset(
 
     response.raise_for_status()
 
-    return response.json()["data"]["persistentId"]
+    if return_id:
+        return response.json()["data"]["persistentId"], response.json()["data"]["id"]
+    else:
+        return response.json()["data"]["persistentId"]
 
 
 def create_mock_file(

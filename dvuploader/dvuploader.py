@@ -244,8 +244,14 @@ class DVUploader(BaseModel):
                 to_skip.append(file.file_id)
 
                 if replace_existing:
-                    ds_file = self._get_dsfile_by_id(file.file_id, ds_files)  # type: ignore
-                    if not self._check_size(file, ds_file):  # type: ignore
+                    assert file.file_id is not None, "File ID is required"
+                    assert isinstance(file.file_id, int), "File ID must be an integer"
+
+                    ds_file = self._get_dsfile_by_id(file.file_id, ds_files)
+
+                    assert ds_file is not None, "Dataset file not found"
+
+                    if not self._check_size(file, ds_file):
                         file._unchanged_data = False
                     else:
                         # calculate checksum
@@ -364,10 +370,12 @@ class DVUploader(BaseModel):
             dsFile.get("directoryLabel", ""), dsFile["dataFile"]["filename"]
         )
 
+        directory_label = file.directory_label if file.directory_label else ""
+
         return (
             file.checksum.value == hash_value
             and file.checksum.type == hash_algo
-            and path == os.path.join(file.directory_label, file.file_name)  # type: ignore
+            and path == os.path.join(directory_label, file.file_name)  # type: ignore
         )
 
     @staticmethod

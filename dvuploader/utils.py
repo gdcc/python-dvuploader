@@ -1,6 +1,9 @@
+import asyncio
+import logging
 import os
 import pathlib
 import re
+import time
 from typing import List, Optional
 from urllib.parse import urljoin
 
@@ -8,6 +11,21 @@ import httpx
 from rich.progress import Progress
 
 from dvuploader.file import File
+
+
+def init_logging():
+    level = (
+        logging.DEBUG
+        if os.environ.get("DVUPLOADER_DEBUG", "false").lower() == "true"
+        else None
+    )
+
+    if level is not None:
+        logging.basicConfig(
+            format="%(levelname)s [%(asctime)s] %(name)s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+            level=level,
+        )
 
 
 def build_url(
@@ -177,3 +195,70 @@ def setup_pbar(
         start=True,
         total=file_size,
     )
+
+
+async def wait_for_dataset_unlock(
+    session: httpx.AsyncClient,
+    persistent_id: str,
+    sleep_time: float = 1.0,
+    timeout: float = 300.0,  # 5 minutes
+) -> None:
+    """
+    Wait for a dataset to be unlocked.
+
+    Args:
+        session (httpx.AsyncClient): The httpx client.
+        persistent_id (str): The persistent identifier of the dataset.
+        sleep_time (float): The time to sleep between checks.
+        timeout (float): The timeout in seconds.
+    """
+    dataset_id = await _get_dataset_id(
+        session=session,
+        persistent_id=persistent_id,
+    )
+    start_time = time.monotonic()
+    while await check_dataset_lock(session=session, id=dataset_id):
+        if time.monotonic() - start_time > timeout:
+            raise TimeoutError(f"Dataset {id} did not unlock after {timeout} seconds")
+        await asyncio.sleep(sleep_time)
+
+
+async def check_dataset_lock(
+    session: httpx.AsyncClient,
+    id: int,
+) -> bool:
+    """
+    Check if a dataset is locked.
+
+    Args:
+        session (httpx.AsyncClient): The httpx client.
+        id (int): The ID of the dataset.
+
+    Returns:
+        bool: True if the dataset is locked, False otherwise.
+    """
+    response = await session.get(f"/api/datasets/{id}/locks")
+    response.raise_for_status()
+
+    body = response.json()
+    if len(body["data"]) == 0:
+        return False
+    return True
+
+
+async def _get_dataset_id(
+    session: httpx.AsyncClient,
+    persistent_id: str,
+) -> int:
+    """
+    Get the ID of a dataset.
+
+    Args:
+        session (httpx.AsyncClient): The httpx client.
+        persistent_id (str): The persistent identifier of the dataset.
+    """
+    response = await session.get(
+        f"/api/datasets/:persistentId/?persistentId={persistent_id}"
+    )
+    response.raise_for_status()
+    return response.json()["data"]["id"]
