@@ -127,6 +127,8 @@ DVUploader provides several environment variables that allow you to control retr
 - `DVUPLOADER_MIN_RETRY_TIME`: Minimum wait time between retries in seconds (default: 1)
 - `DVUPLOADER_RETRY_MULTIPLIER`: Multiplier for exponential backoff (default: 0.1)
 - `DVUPLOADER_MAX_PKG_SIZE`: Maximum package size in bytes (default: 2GB)
+- `DVUPLOADER_LOCK_WAIT_TIME`: Time to wait between checks for dataset lock (default: 10 seconds)
+- `DVUPLOADER_LOCK_TIMEOUT`: Timeout for dataset lock check in seconds (default: 300 seconds)
 
 **Setting via environment:**
 ```bash
@@ -135,6 +137,8 @@ export DVUPLOADER_MAX_RETRY_TIME=300
 export DVUPLOADER_MIN_RETRY_TIME=2
 export DVUPLOADER_RETRY_MULTIPLIER=0.2
 export DVUPLOADER_MAX_PKG_SIZE=3221225472  # 3GB
+export DVUPLOADER_LOCK_WAIT_TIME=5
+export DVUPLOADER_LOCK_TIMEOUT=300
 ```
 
 **Setting programmatically:**
@@ -148,6 +152,8 @@ dv.config(
     min_retry_time=2,
     retry_multiplier=0.2,
     max_package_size=3 * 1024**3  # 3GB
+    lock_wait_time=5,
+    lock_timeout=300,
 )
 
 # Continue with your upload as normal
