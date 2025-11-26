@@ -1,15 +1,21 @@
+import asyncio
 from io import BytesIO
-import pytest
-import httpx
 
+import httpx
+import pytest
 from rich.progress import Progress
+
 from dvuploader.file import File
 from dvuploader.utils import (
+    _get_dataset_id,
     add_directory,
     build_url,
+    check_dataset_lock,
     retrieve_dataset_files,
     setup_pbar,
+    wait_for_dataset_unlock,
 )
+from tests.conftest import create_dataset
 
 
 class TestAddDirectory:
@@ -188,3 +194,214 @@ class TestSetupPbar:
         # Assert
         assert isinstance(result, int)
         assert result == 0
+
+
+class TestDatasetId:
+    @pytest.mark.asyncio
+    async def test_get_dataset_id(self, credentials):
+        # Arrange
+        BASE_URL, API_TOKEN = credentials
+        dataset_pid, dataset_id = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+            return_id=True,
+        )
+
+        print(dataset_pid, dataset_id)
+
+        # Act
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            headers={"X-Dataverse-key": API_TOKEN},
+        ) as session:
+            result = await _get_dataset_id(session=session, persistent_id=dataset_pid)
+
+        # Assert
+        assert result == dataset_id
+
+
+class TestCheckDatasetLock:
+    @pytest.mark.asyncio
+    async def test_check_dataset_lock(self, credentials):
+        # Create a dataset and apply a lock, then verify the lock is detected
+        BASE_URL, API_TOKEN = credentials
+        _, dataset_id = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+            return_id=True,
+        )
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            headers={"X-Dataverse-key": API_TOKEN},
+        ) as session:
+            response = await session.post(f"/api/datasets/{dataset_id}/lock/Ingest")
+            response.raise_for_status()
+            result = await check_dataset_lock(session=session, id=dataset_id)
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_wait_for_dataset_unlock(self, credentials):
+        # Test that the unlock wait function completes when a dataset lock is released
+        BASE_URL, API_TOKEN = credentials
+        dataset_pid, dataset_id = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+            return_id=True,
+        )
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            headers={"X-Dataverse-key": API_TOKEN},
+        ) as session:
+            response = await session.post(f"/api/datasets/{dataset_id}/lock/Ingest")
+            response.raise_for_status()
+
+            async def release_lock():
+                # Simulate background unlock after a brief pause
+                await asyncio.sleep(1.5)
+                unlock_resp = await session.delete(
+                    f"/api/datasets/{dataset_id}/locks",
+                    params={"type": "Ingest"},
+                )
+                unlock_resp.raise_for_status()
+
+            release_task = asyncio.create_task(release_lock())
+            await wait_for_dataset_unlock(
+                session=session,
+                persistent_id=dataset_pid,
+                timeout=4,
+            )
+            await release_task  # Ensure unlock task completes
+
+    @pytest.mark.asyncio
+    async def test_wait_for_dataset_unlock_timeout(self, credentials):
+        # Should raise a timeout error if dataset is not unlocked within the given window
+        BASE_URL, API_TOKEN = credentials
+        dataset_pid, dataset_id = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+            return_id=True,
+        )
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            headers={"X-Dataverse-key": API_TOKEN},
+        ) as session:
+            response = await session.post(f"/api/datasets/{dataset_id}/lock/Ingest")
+            response.raise_for_status()
+
+            with pytest.raises(TimeoutError):
+                await wait_for_dataset_unlock(
+                    session=session,
+                    persistent_id=dataset_pid,
+                    timeout=0.2,
+                )
+
+    @pytest.mark.asyncio
+    async def test_check_dataset_lock_when_unlocked(self, credentials):
+        # Confirm that check_dataset_lock returns False for unlocked datasets
+        BASE_URL, API_TOKEN = credentials
+        dataset_pid, dataset_id = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+            return_id=True,
+        )
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            headers={"X-Dataverse-key": API_TOKEN},
+        ) as session:
+            result = await check_dataset_lock(session=session, id=dataset_id)
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_wait_for_dataset_unlock_already_unlocked(self, credentials):
+        # Wait should return promptly when there is no lock present
+        BASE_URL, API_TOKEN = credentials
+        dataset_pid, dataset_id = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+            return_id=True,
+        )
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            headers={"X-Dataverse-key": API_TOKEN},
+        ) as session:
+            import time
+
+            start = time.monotonic()
+            await wait_for_dataset_unlock(
+                session=session,
+                persistent_id=dataset_pid,
+                timeout=5,
+            )
+            elapsed = time.monotonic() - start
+            assert elapsed < 0.5  # Operation should be quick
+
+    @pytest.mark.asyncio
+    async def test_check_dataset_lock_invalid_id(self, credentials):
+        # Using a likely-invalid ID should cause an HTTP error from the API
+        BASE_URL, API_TOKEN = credentials
+        invalid_dataset_id = 999999999
+
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            headers={"X-Dataverse-key": API_TOKEN},
+        ) as session:
+            with pytest.raises(httpx.HTTPStatusError):
+                await check_dataset_lock(session=session, id=invalid_dataset_id)
+
+    @pytest.mark.asyncio
+    async def test_wait_for_dataset_unlock_invalid_id(self, credentials):
+        # Waiting on an invalid dataset should raise an HTTP error
+        BASE_URL, API_TOKEN = credentials
+        invalid_dataset_pid = "999999999"
+
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            headers={"X-Dataverse-key": API_TOKEN},
+        ) as session:
+            with pytest.raises(httpx.HTTPStatusError):
+                await wait_for_dataset_unlock(
+                    session=session,
+                    persistent_id=invalid_dataset_pid,
+                    timeout=1,
+                )
+
+    @pytest.mark.asyncio
+    async def test_wait_for_dataset_unlock_race_condition_at_timeout(self, credentials):
+        # Test the case where unlocking occurs just before timeout
+        BASE_URL, API_TOKEN = credentials
+        dataset_pid, dataset_id = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+            return_id=True,
+        )
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            headers={"X-Dataverse-key": API_TOKEN},
+        ) as session:
+            response = await session.post(f"/api/datasets/{dataset_id}/lock/Ingest")
+            response.raise_for_status()
+
+            async def release_lock():
+                # Unlock just before the test timeout
+                await asyncio.sleep(1.8)
+                unlock_resp = await session.delete(
+                    f"/api/datasets/{dataset_id}/locks",
+                    params={"type": "Ingest"},
+                )
+                unlock_resp.raise_for_status()
+
+            release_task = asyncio.create_task(release_lock())
+            await wait_for_dataset_unlock(
+                session=session,
+                persistent_id=dataset_pid,
+                timeout=2.5,
+                sleep_time=0.1,
+            )
+            await release_task  # Clean up after test unlock

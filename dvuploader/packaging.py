@@ -1,7 +1,7 @@
 import os
 import zipfile
-
 from typing import List, Tuple
+
 from dvuploader.file import File
 
 MAXIMUM_PACKAGE_SIZE = int(
@@ -101,7 +101,7 @@ def zip_files(
     with zipfile.ZipFile(path, "w") as zip_file:
         for file in files:
             zip_file.writestr(
-                data=file.handler.read(),  # type: ignore
+                data=file.get_handler().read(),  # type: ignore
                 zinfo_or_arcname=_create_arcname(file),
             )
             file._is_inside_zip = True
@@ -123,4 +123,5 @@ def _create_arcname(file: File) -> str:
     if file.directory_label is not None:
         return os.path.join(file.directory_label, file.file_name)  # type: ignore
     else:
+        assert file.file_name is not None, "File name is required"
         return file.file_name

@@ -1,9 +1,10 @@
-import yaml
-import typer
-
 from pathlib import Path
-from pydantic import BaseModel
 from typing import List, Optional
+
+import typer
+import yaml
+from pydantic import BaseModel
+
 from dvuploader import DVUploader, File
 from dvuploader.utils import add_directory
 
@@ -29,6 +30,7 @@ class CliInput(BaseModel):
 
 app = typer.Typer()
 
+
 def _enumerate_filepaths(filepaths: List[str], recurse: bool) -> List[File]:
     """
     Take a list of filepaths and transform it into a list of File objects, optionally recursing into each of them.
@@ -39,7 +41,7 @@ def _enumerate_filepaths(filepaths: List[str], recurse: bool) -> List[File]:
 
     Returns:
         List[File]: A list of File objects representing the files extracted from all filepaths.
-    
+
     Raises:
         FileNotFoundError: If a filepath does not exist.
         IsADirectoryError: If recurse is False and a filepath points to a directory instead of a file.
@@ -183,6 +185,9 @@ def main(
     if filepaths is None:
         filepaths = []
 
+    if recurse is None:
+        recurse = False
+
     _validate_inputs(
         filepaths=filepaths,
         pid=pid,
@@ -200,7 +205,10 @@ def main(
             api_token=api_token,
             dataverse_url=dataverse_url,
             persistent_id=pid,
-            files=_enumerate_filepaths(filepaths=filepaths, recurse=recurse),
+            files=_enumerate_filepaths(
+                filepaths=filepaths,
+                recurse=recurse,
+            ),
         )
 
     uploader = DVUploader(files=cli_input.files)

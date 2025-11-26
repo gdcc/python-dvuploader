@@ -1,20 +1,26 @@
 import asyncio
-import httpx
-from io import BytesIO
 import json
 import os
-from typing import Dict, List, Optional, Tuple
+from io import BytesIO
+from typing import AsyncGenerator, Dict, List, Optional, Tuple
 from urllib.parse import urljoin
+
 import aiofiles
-from typing import AsyncGenerator
+import httpx
 from rich.progress import Progress, TaskID
 
 from dvuploader.file import File
-from dvuploader.utils import build_url
+from dvuploader.utils import build_url, init_logging, wait_for_dataset_unlock
 
 TESTING = bool(os.environ.get("DVUPLOADER_TESTING", False))
 MAX_FILE_DISPLAY = int(os.environ.get("DVUPLOADER_MAX_FILE_DISPLAY", 50))
 MAX_RETRIES = int(os.environ.get("DVUPLOADER_MAX_RETRIES", 10))
+
+LOCK_WAIT_TIME = int(os.environ.get("DVUPLOADER_LOCK_WAIT_TIME", 1.5))
+LOCK_TIMEOUT = int(os.environ.get("DVUPLOADER_LOCK_TIMEOUT", 300))
+
+assert isinstance(LOCK_WAIT_TIME, int), "DVUPLOADER_LOCK_WAIT_TIME must be an integer"
+assert isinstance(LOCK_TIMEOUT, int), "DVUPLOADER_LOCK_TIMEOUT must be an integer"
 
 assert isinstance(MAX_FILE_DISPLAY, int), (
     "DVUPLOADER_MAX_FILE_DISPLAY must be an integer"
@@ -26,6 +32,9 @@ TICKET_ENDPOINT = "/api/datasets/:persistentId/uploadurls"
 ADD_FILE_ENDPOINT = "/api/datasets/:persistentId/addFiles"
 UPLOAD_ENDPOINT = "/api/datasets/:persistentId/addFiles?persistentId="
 REPLACE_ENDPOINT = "/api/datasets/:persistentId/replaceFiles?persistentId="
+
+# Initialize logging
+init_logging()
 
 
 async def direct_upload(
@@ -250,7 +259,7 @@ async def _upload_singlepart(
         "headers": headers,
         "url": ticket["url"],
         "content": upload_bytes(
-            file=file.handler,  # type: ignore
+            file=file.get_handler(),  # type: ignore
             progress=progress,
             pbar=pbar,
             hash_func=file.checksum._hash_fun,
@@ -548,6 +557,13 @@ async def _add_files_to_ds(
         progress: Progress tracking object.
         pbar: Progress bar for registration.
     """
+
+    await wait_for_dataset_unlock(
+        session=session,
+        persistent_id=pid,
+        sleep_time=LOCK_WAIT_TIME,
+        timeout=LOCK_TIMEOUT,
+    )
 
     novel_url = urljoin(dataverse_url, UPLOAD_ENDPOINT + pid)
     replace_url = urljoin(dataverse_url, REPLACE_ENDPOINT + pid)

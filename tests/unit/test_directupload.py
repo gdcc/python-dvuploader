@@ -1,27 +1,36 @@
 import httpx
 import pytest
 from rich.progress import Progress
+
 from dvuploader.directupload import (
     _add_files_to_ds,
-    _validate_ticket_response,
     _prepare_registration,
+    _validate_ticket_response,
 )
-
 from dvuploader.file import File
 
 
 class Test_AddFileToDs:
-    # Should successfully add files to a Dataverse dataset with a valid file path
     @pytest.mark.asyncio
     async def test_successfully_add_file_with_valid_filepath(self, httpx_mock):
-        # Mock the session.post method to return a response with status code 200
+        httpx_mock.add_response(
+            method="get",
+            url="https://example.com/api/datasets/:persistentId/?persistentId=pid",
+            json={"status": "OK", "data": {"id": 123}},
+        )
+
+        httpx_mock.add_response(
+            method="get",
+            url="https://example.com/api/datasets/123/locks",
+            json={"status": "OK", "data": []},
+        )
+
         httpx_mock.add_response(
             method="post",
             url="https://example.com/api/datasets/:persistentId/addFiles?persistentId=pid",
         )
 
-        # Initialize the necessary variables
-        session = httpx.AsyncClient()
+        session = httpx.AsyncClient(base_url="https://example.com")
         dataverse_url = "https://example.com"
         pid = "pid"
         fpath = "tests/fixtures/add_dir_files/somefile.txt"
@@ -29,7 +38,6 @@ class Test_AddFileToDs:
         progress = Progress()
         pbar = progress.add_task("Uploading", total=1)
 
-        # Invoke the function
         await _add_files_to_ds(
             session=session,
             dataverse_url=dataverse_url,
@@ -41,14 +49,24 @@ class Test_AddFileToDs:
 
     @pytest.mark.asyncio
     async def test_successfully_replace_file_with_valid_filepath(self, httpx_mock):
-        # Mock the session.post method to return a response with status code 200
+        httpx_mock.add_response(
+            method="get",
+            url="https://example.com/api/datasets/:persistentId/?persistentId=pid",
+            json={"status": "OK", "data": {"id": 123}},
+        )
+
+        httpx_mock.add_response(
+            method="get",
+            url="https://example.com/api/datasets/123/locks",
+            json={"status": "OK", "data": []},
+        )
+
         httpx_mock.add_response(
             method="post",
             url="https://example.com/api/datasets/:persistentId/replaceFiles?persistentId=pid",
         )
 
-        # Initialize the necessary variables
-        session = httpx.AsyncClient()
+        session = httpx.AsyncClient(base_url="https://example.com")
         dataverse_url = "https://example.com"
         pid = "pid"
         fpath = "tests/fixtures/add_dir_files/somefile.txt"
@@ -56,7 +74,6 @@ class Test_AddFileToDs:
         progress = Progress()
         pbar = progress.add_task("Uploading", total=1)
 
-        # Invoke the function
         await _add_files_to_ds(
             session=session,
             dataverse_url=dataverse_url,
@@ -70,10 +87,16 @@ class Test_AddFileToDs:
     async def test_successfully_add_and_replace_file_with_valid_filepath(
         self, httpx_mock
     ):
-        # Mock the session.post method to return a response with status code 200
         httpx_mock.add_response(
-            method="post",
-            url="https://example.com/api/datasets/:persistentId/replaceFiles?persistentId=pid",
+            method="get",
+            url="https://example.com/api/datasets/:persistentId/?persistentId=pid",
+            json={"status": "OK", "data": {"id": 123}},
+        )
+
+        httpx_mock.add_response(
+            method="get",
+            url="https://example.com/api/datasets/123/locks",
+            json={"status": "OK", "data": []},
         )
 
         httpx_mock.add_response(
@@ -81,8 +104,12 @@ class Test_AddFileToDs:
             url="https://example.com/api/datasets/:persistentId/addFiles?persistentId=pid",
         )
 
-        # Initialize the necessary variables
-        session = httpx.AsyncClient()
+        httpx_mock.add_response(
+            method="post",
+            url="https://example.com/api/datasets/:persistentId/replaceFiles?persistentId=pid",
+        )
+
+        session = httpx.AsyncClient(base_url="https://example.com")
         dataverse_url = "https://example.com"
         pid = "pid"
         fpath = "tests/fixtures/add_dir_files/somefile.txt"
@@ -93,7 +120,6 @@ class Test_AddFileToDs:
         progress = Progress()
         pbar = progress.add_task("Uploading", total=1)
 
-        # Invoke the function
         await _add_files_to_ds(
             session=session,
             dataverse_url=dataverse_url,

@@ -2,6 +2,8 @@ import os
 
 
 def config(
+    lock_wait_time: int = 10,
+    lock_timeout: int = 300,
     max_retries: int = 15,
     max_retry_time: int = 240,
     min_retry_time: int = 1,
@@ -54,3 +56,5 @@ def config(
     os.environ["DVUPLOADER_MIN_RETRY_TIME"] = str(min_retry_time)
     os.environ["DVUPLOADER_RETRY_MULTIPLIER"] = str(retry_multiplier)
     os.environ["DVUPLOADER_MAX_PKG_SIZE"] = str(max_package_size)
+    os.environ["DVUPLOADER_LOCK_WAIT_TIME"] = str(lock_wait_time)
+    os.environ["DVUPLOADER_LOCK_TIMEOUT"] = str(lock_timeout)

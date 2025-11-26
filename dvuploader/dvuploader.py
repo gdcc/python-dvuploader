@@ -1,15 +1,15 @@
 import asyncio
-from urllib.parse import urljoin
-import httpx
 import os
-import rich
 from typing import Dict, List, Optional
+from urllib.parse import urljoin
 
+import httpx
+import rich
 from pydantic import BaseModel
-from rich.progress import Progress
-from rich.table import Table
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import Progress
+from rich.table import Table
 
 from dvuploader.directupload import (
     TICKET_ENDPOINT,
@@ -239,7 +239,13 @@ class DVUploader(BaseModel):
                 to_skip.append(file.file_id)
 
                 if replace_existing:
+                    assert file.file_id is not None, "File ID is required"
+                    assert isinstance(file.file_id, int), "File ID must be an integer"
+
                     ds_file = self._get_dsfile_by_id(file.file_id, ds_files)
+
+                    assert ds_file is not None, "Dataset file not found"
+
                     if not self._check_size(file, ds_file):
                         file._unchanged_data = False
                     else:
@@ -359,10 +365,12 @@ class DVUploader(BaseModel):
             dsFile.get("directoryLabel", ""), dsFile["dataFile"]["filename"]
         )
 
+        directory_label = file.directory_label if file.directory_label else ""
+
         return (
             file.checksum.value == hash_value
             and file.checksum.type == hash_algo
-            and path == os.path.join(file.directory_label, file.file_name)  # type: ignore
+            and path == os.path.join(directory_label, file.file_name)  # type: ignore
         )
 
     @staticmethod

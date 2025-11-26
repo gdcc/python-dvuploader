@@ -130,7 +130,6 @@ class File(BaseModel):
 
         if self.handler is None:
             self._validate_filepath(self.filepath)
-            self.handler = open(self.filepath, "rb")
             self._size = os.path.getsize(self.filepath)
         else:
             self._size = len(self.handler.read())
@@ -146,6 +145,15 @@ class File(BaseModel):
         )
 
         return self
+
+    def get_handler(self) -> IO:
+        """
+        Opens the file and initializes the file handler.
+        """
+        if self.handler is not None:
+            return self.handler
+
+        return open(self.filepath, "rb")
 
     @staticmethod
     def _validate_filepath(path):
@@ -190,12 +198,13 @@ class File(BaseModel):
         Note:
             This method resets the file position to the start after reading.
         """
-        assert self.handler is not None, "File handler is not initialized."
         assert self.checksum is not None, "Checksum is not initialized."
         assert self.checksum._hash_fun is not None, "Checksum hash function is not set."
 
+        handler = self.get_handler()
+
         while True:
-            buf = self.handler.read(blocksize)
+            buf = handler.read(blocksize)
 
             if not isinstance(buf, bytes):
                 buf = buf.encode()
@@ -203,8 +212,13 @@ class File(BaseModel):
             if not buf:
                 break
             self.checksum._hash_fun.update(buf)
-
-        self.handler.seek(0)
+            
+        if self.handler is not None:  # type: ignore
+            # In case of passed handler, we need to seek the handler to the start after reading.
+            self.handler.seek(0)
+        else:
+            # Path-based handlers will be opened just-in-time, so we can close it.
+            handler.close()
 
     def __del__(self):
         if self.handler is not None:
