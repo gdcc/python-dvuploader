@@ -1,4 +1,5 @@
 import pytest
+
 from dvuploader.file import File
 
 
@@ -10,7 +11,7 @@ class TestFile:
         # Act
         file = File(
             filepath=fpath,
-            directory_label="",
+            directoryLabel="",
         )
 
         file.extract_file_name()
@@ -26,7 +27,7 @@ class TestFile:
         with pytest.raises(FileNotFoundError):
             file = File(
                 filepath=fpath,
-                directory_label="",
+                directoryLabel="",
             )
 
             file.extract_file_name()
@@ -39,7 +40,7 @@ class TestFile:
         with pytest.raises(IsADirectoryError):
             file = File(
                 filepath=fpath,
-                directory_label="",
+                directoryLabel="",
             )
 
             file.extract_file_name()
