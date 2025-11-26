@@ -17,7 +17,7 @@ from dvuploader.directupload import (
 )
 from dvuploader.file import File
 from dvuploader.nativeupload import native_upload
-from dvuploader.utils import build_url, retrieve_dataset_files, setup_pbar
+from dvuploader.utils import retrieve_dataset_files, setup_pbar
 
 
 class DVUploader(BaseModel):
@@ -410,15 +410,17 @@ class DVUploader(BaseModel):
             bool: True if direct upload is supported, False otherwise.
         """
 
-        query = build_url(
-            endpoint=urljoin(dataverse_url, TICKET_ENDPOINT),
-            key=api_token,
-            persistentId=persistent_id,
-            size=1024,
-        )
-
         # Send HTTP request
-        response = httpx.get(query)
+        response = httpx.get(
+            urljoin(dataverse_url, TICKET_ENDPOINT),
+            params={
+                "size": 1024,
+                "persistentId": persistent_id,
+            },
+            headers={
+                "X-Dataverse-key": api_token,
+            },
+        )
 
         if response.status_code == 404:
             return False

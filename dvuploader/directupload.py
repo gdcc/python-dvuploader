@@ -10,7 +10,7 @@ import httpx
 from rich.progress import Progress, TaskID
 
 from dvuploader.file import File
-from dvuploader.utils import build_url, init_logging, wait_for_dataset_unlock
+from dvuploader.utils import init_logging, wait_for_dataset_unlock
 
 TESTING = bool(os.environ.get("DVUPLOADER_TESTING", False))
 MAX_FILE_DISPLAY = int(os.environ.get("DVUPLOADER_MAX_FILE_DISPLAY", 50))
@@ -205,14 +205,16 @@ async def _request_ticket(
     Returns:
         Dict: Upload ticket containing URL and storage identifier.
     """
-    url = build_url(
-        endpoint=urljoin(dataverse_url, TICKET_ENDPOINT),
-        key=api_token,
-        persistentId=persistent_id,
-        size=file_size,
-    )
+    url = urljoin(dataverse_url, TICKET_ENDPOINT)
 
-    response = await session.get(url, timeout=None)
+    response = await session.get(
+        url,
+        timeout=None,
+        params={
+            "size": file_size,
+            "persistentId": persistent_id,
+        },
+    )
     response.raise_for_status()
 
     return response.json()["data"]
