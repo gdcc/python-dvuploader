@@ -13,7 +13,12 @@ from rich.progress import Progress, TaskID
 
 from dvuploader.file import File
 from dvuploader.packaging import distribute_files, zip_files
-from dvuploader.utils import build_url, retrieve_dataset_files
+from dvuploader.utils import (
+    build_url,
+    init_logging,
+    retrieve_dataset_files,
+    wait_for_dataset_unlock,
+)
 
 ##### CONFIGURATION #####
 
@@ -22,6 +27,8 @@ from dvuploader.utils import build_url, retrieve_dataset_files
 #
 # This will exponentially increase the wait time between retries.
 # The max wait time is 240 seconds per retry though.
+LOCK_WAIT_TIME = int(os.environ.get("DVUPLOADER_LOCK_WAIT_TIME", 1.5))
+LOCK_TIMEOUT = int(os.environ.get("DVUPLOADER_LOCK_TIMEOUT", 300))
 MAX_RETRIES = int(os.environ.get("DVUPLOADER_MAX_RETRIES", 15))
 MAX_RETRY_TIME = int(os.environ.get("DVUPLOADER_MAX_RETRY_TIME", 60))
 MIN_RETRY_TIME = int(os.environ.get("DVUPLOADER_MIN_RETRY_TIME", 1))
@@ -32,6 +39,9 @@ RETRY_STRAT = tenacity.wait_exponential(
     max=MAX_RETRY_TIME,
 )
 
+
+assert isinstance(LOCK_WAIT_TIME, int), "DVUPLOADER_LOCK_WAIT_TIME must be an integer"
+assert isinstance(LOCK_TIMEOUT, int), "DVUPLOADER_LOCK_TIMEOUT must be an integer"
 assert isinstance(MAX_RETRIES, int), "DVUPLOADER_MAX_RETRIES must be an integer"
 assert isinstance(MAX_RETRY_TIME, int), "DVUPLOADER_MAX_RETRY_TIME must be an integer"
 assert isinstance(MIN_RETRY_TIME, int), "DVUPLOADER_MIN_RETRY_TIME must be an integer"
@@ -53,6 +63,9 @@ TABULAR_EXTENSIONS = [
 ##### ERROR MESSAGES #####
 
 ZIP_LIMIT_MESSAGE = "The number of files in the zip archive is over the limit"
+
+
+init_logging()
 
 
 async def native_upload(
@@ -267,6 +280,14 @@ async def _single_native_upload(
             - dict: JSON response from the upload request
     """
 
+    # Check if the dataset is locked
+    await wait_for_dataset_unlock(
+        session=session,
+        persistent_id=persistent_id,
+        sleep_time=LOCK_WAIT_TIME,
+        timeout=LOCK_TIMEOUT,
+    )
+
     if not file.to_replace:
         endpoint = build_url(
             endpoint=NATIVE_UPLOAD_ENDPOINT,
@@ -411,6 +432,7 @@ async def _update_metadata(
             session=session,
             url=NATIVE_METADATA_ENDPOINT.format(FILE_ID=file_id),
             file=file,
+            persistent_id=persistent_id,
         )
 
         tasks.append(task)
@@ -426,6 +448,7 @@ async def _update_single_metadata(
     session: httpx.AsyncClient,
     url: str,
     file: File,
+    persistent_id: str,
 ) -> None:
     """
     Updates the metadata of a single file in a Dataverse repository.
@@ -438,6 +461,13 @@ async def _update_single_metadata(
     Raises:
         ValueError: If metadata update fails.
     """
+
+    await wait_for_dataset_unlock(
+        session=session,
+        persistent_id=persistent_id,
+        sleep_time=LOCK_WAIT_TIME,
+        timeout=LOCK_TIMEOUT,
+    )
 
     json_data = _get_json_data(file)
 
