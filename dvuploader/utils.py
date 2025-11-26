@@ -4,7 +4,7 @@ import os
 import pathlib
 import re
 import time
-from typing import List
+from typing import List, Optional
 from urllib.parse import urljoin
 
 import httpx
@@ -59,6 +59,7 @@ def retrieve_dataset_files(
     dataverse_url: str,
     persistent_id: str,
     api_token: str,
+    proxy: Optional[str] = None,
 ):
     """
     Retrieve the files of a specific dataset from a Dataverse repository.
@@ -67,6 +68,7 @@ def retrieve_dataset_files(
         dataverse_url (str): The base URL of the Dataverse repository.
         persistent_id (str): The persistent identifier (PID) of the dataset.
         api_token (str): API token for authentication.
+        proxy (Optional[str]): The proxy to use for the request.
 
     Returns:
         list: A list of files in the dataset.
@@ -80,6 +82,7 @@ def retrieve_dataset_files(
     response = httpx.get(
         urljoin(dataverse_url, DATASET_ENDPOINT),
         headers={"X-Dataverse-key": api_token},
+        proxy=proxy,
     )
 
     response.raise_for_status()

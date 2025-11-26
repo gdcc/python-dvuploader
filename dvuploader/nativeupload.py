@@ -4,7 +4,7 @@ import os
 import tempfile
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import IO, Dict, List, Optional, Tuple
 
 import httpx
 import rich
@@ -63,6 +63,36 @@ TABULAR_EXTENSIONS = [
 ##### ERROR MESSAGES #####
 
 ZIP_LIMIT_MESSAGE = "The number of files in the zip archive is over the limit"
+
+
+class _ProgressFileWrapper:
+    """
+    Wrap a binary file-like object and update a rich progress bar on reads.
+    httpx's multipart expects a synchronous file-like object exposing .read().
+    """
+
+    def __init__(
+        self,
+        file: IO[bytes],
+        progress: Progress,
+        pbar: TaskID,
+        chunk_size: int = 1024 * 1024,
+    ):
+        self._file = file
+        self._progress = progress
+        self._pbar = pbar
+        self._chunk_size = chunk_size
+
+    def read(self, size: int = -1) -> bytes:
+        if size is None or size < 0:
+            size = self._chunk_size
+        data = self._file.read(size)
+        if data:
+            self._progress.update(self._pbar, advance=len(data))
+        return data
+
+    def __getattr__(self, name):
+        return getattr(self._file, name)
 
 
 init_logging()
@@ -161,6 +191,7 @@ async def native_upload(
                 persistent_id=persistent_id,
                 dataverse_url=dataverse_url,
                 api_token=api_token,
+                proxy=proxy,
             )
 
 
@@ -255,7 +286,9 @@ def _reset_progress(
 @tenacity.retry(
     wait=RETRY_STRAT,
     stop=tenacity.stop_after_attempt(MAX_RETRIES),
-    retry=tenacity.retry_if_exception_type((httpx.HTTPStatusError,)),
+    retry=tenacity.retry_if_exception_type(
+        (httpx.HTTPStatusError, httpx.ReadError, httpx.RequestError)
+    ),
 )
 async def _single_native_upload(
     session: httpx.AsyncClient,
@@ -301,10 +334,12 @@ async def _single_native_upload(
     json_data = _get_json_data(file)
     handler = file.get_handler()
 
+    assert handler is not None, "File handler is required for native upload"
+
     files = {
         "file": (
             file.file_name,
-            handler,
+            _ProgressFileWrapper(handler, progress, pbar),  # type: ignore[arg-type]
             file.mimeType,
         ),
         "jsonData": (
@@ -316,7 +351,7 @@ async def _single_native_upload(
 
     response = await session.post(
         endpoint,
-        files=files,  # type: ignore
+        files=files,
     )
 
     if response.status_code == 400 and response.json()["message"].startswith(
@@ -371,6 +406,7 @@ async def _update_metadata(
     dataverse_url: str,
     api_token: str,
     persistent_id: str,
+    proxy: Optional[str],
 ):
     """
     Updates the metadata of the given files in a Dataverse repository.
@@ -390,6 +426,7 @@ async def _update_metadata(
         persistent_id=persistent_id,
         dataverse_url=dataverse_url,
         api_token=api_token,
+        proxy=proxy,
     )
 
     tasks = []
@@ -505,6 +542,7 @@ def _retrieve_file_ids(
     persistent_id: str,
     dataverse_url: str,
     api_token: str,
+    proxy: Optional[str] = None,
 ) -> Dict[str, str]:
     """
     Retrieves the file IDs of files in a dataset.
@@ -513,7 +551,7 @@ def _retrieve_file_ids(
         persistent_id (str): The persistent identifier of the dataset.
         dataverse_url (str): The URL of the Dataverse repository.
         api_token (str): The API token of the Dataverse repository.
-
+        proxy (str): The proxy to use for the request.
     Returns:
         Dict[str, str]: Dictionary mapping file paths to their IDs.
     """
@@ -523,6 +561,7 @@ def _retrieve_file_ids(
         persistent_id=persistent_id,
         dataverse_url=dataverse_url,
         api_token=api_token,
+        proxy=proxy,
     )
 
     return _create_file_id_path_mapping(ds_files)

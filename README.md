@@ -210,8 +210,22 @@ export DVUPLOADER_TESTING=true
 
 **3. Run the test(s) with pytest**
 
+Run all tests:
+
 ```bash
 poetry run pytest
+```
+
+Run a specific test:
+
+```bash
+poetry run pytest -k test_native_upload_with_large_file
+```
+
+Run all non-expensive tests:  
+
+```bash
+poetry run pytest -m "not expensive"
 ```
 
 ### Linting

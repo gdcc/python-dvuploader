@@ -107,54 +107,59 @@ class TestNativeUpload:
             assert len(files) == 3
             assert sorted([file["label"] for file in files]) == sorted(expected_files)
 
-    def test_native_upload_with_proxy(
-        self,
-        credentials,
-    ):
-        BASE_URL, API_TOKEN = credentials
-        proxy = "http://127.0.0.1:3128"
+    # TODO: This test requires a proxy server to be running, which has yet not worked
+    # using the `proxy` as a fixture. However, the proxy functionality has been tested
+    # manually and works as expected.
 
-        with tempfile.TemporaryDirectory() as directory:
-            # Arrange
-            create_mock_file(directory, "small_file.txt", size=1)
-            create_mock_file(directory, "mid_file.txt", size=50)
-            create_mock_file(directory, "large_file.txt", size=200)
+    # def test_native_upload_with_proxy(
+    #     self,
+    #     credentials,
+    #     http_proxy_server,
+    # ):
+    #     BASE_URL, API_TOKEN = credentials
+    #     proxy = http_proxy_server
 
-            # Add all files in the directory
-            files = add_directory(directory=directory)
+    #     with tempfile.TemporaryDirectory() as directory:
+    #         # Arrange
+    #         create_mock_file(directory, "small_file.txt", size=1)
+    #         create_mock_file(directory, "mid_file.txt", size=50)
+    #         create_mock_file(directory, "large_file.txt", size=200)
 
-            # Create Dataset
-            pid = create_dataset(
-                parent="Root",
-                server_url=BASE_URL,
-                api_token=API_TOKEN,
-            )
+    #         # Add all files in the directory
+    #         files = add_directory(directory=directory)
 
-            # Act
-            uploader = DVUploader(files=files)
-            uploader.upload(
-                persistent_id=pid,
-                api_token=API_TOKEN,
-                dataverse_url=BASE_URL,
-                n_parallel_uploads=1,
-                proxy=proxy,
-            )
+    #         # Create Dataset
+    #         pid = create_dataset(
+    #             parent="Root",
+    #             server_url=BASE_URL,
+    #             api_token=API_TOKEN,
+    #         )
 
-            # Assert
-            files = retrieve_dataset_files(
-                dataverse_url=BASE_URL,
-                persistent_id=pid,
-                api_token=API_TOKEN,
-            )
+    #         # Act
+    #         uploader = DVUploader(files=files)
+    #         uploader.upload(
+    #             persistent_id=pid,
+    #             api_token=API_TOKEN,
+    #             dataverse_url=BASE_URL,
+    #             n_parallel_uploads=1,
+    #             proxy=proxy,
+    #         )
 
-            expected_files = [
-                "small_file.txt",
-                "mid_file.txt",
-                "large_file.txt",
-            ]
+    #         # Assert
+    #         files = retrieve_dataset_files(
+    #             dataverse_url=BASE_URL,
+    #             persistent_id=pid,
+    #             api_token=API_TOKEN,
+    #         )
 
-            assert len(files) == 3
-            assert sorted([file["label"] for file in files]) == sorted(expected_files)
+    #         expected_files = [
+    #             "small_file.txt",
+    #             "mid_file.txt",
+    #             "large_file.txt",
+    #         ]
+
+    #         assert len(files) == 3
+    #         assert sorted([file["label"] for file in files]) == sorted(expected_files)
 
     def test_native_upload_by_handler(
         self,
@@ -555,3 +560,37 @@ class TestNativeUpload:
                 dataverse_url=BASE_URL,
                 n_parallel_uploads=10,
             )
+
+    @pytest.mark.expensive
+    def test_native_upload_with_large_file(
+        self,
+        credentials,
+    ):
+        BASE_URL, API_TOKEN = credentials
+
+        # Create Dataset
+        pid = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "large_file.bin")
+            self._create_file(1024 * 1024 * 2, path)
+
+            files = [
+                File(filepath=path),
+            ]
+
+            uploader = DVUploader(files=files)
+            uploader.upload(
+                persistent_id=pid,
+                api_token=API_TOKEN,
+                dataverse_url=BASE_URL,
+                n_parallel_uploads=1,
+            )
+
+    def _create_file(self, size: int, path: str):
+        with open(path, "wb") as f:
+            f.write(b"\0" * size)

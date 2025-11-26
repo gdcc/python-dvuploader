@@ -60,7 +60,7 @@ def create_dataset(
     response = httpx.post(
         url=url,
         headers={"X-Dataverse-key": api_token},
-        data=open("./tests/fixtures/create_dataset.json", "rb"),  # type: ignore
+        data=open("./tests/fixtures/create_dataset.json", "rb"),  # type: ignore[reportUnboundVariable]
     )
 
     response.raise_for_status()
