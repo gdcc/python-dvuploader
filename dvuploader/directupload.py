@@ -69,6 +69,7 @@ async def direct_upload(
         "timeout": None,
         "limits": httpx.Limits(max_connections=n_parallel_uploads),
         "proxy": proxy,
+        "base_url": dataverse_url,
     }
 
     async with httpx.AsyncClient(**session_params) as session:
@@ -106,6 +107,7 @@ async def direct_upload(
         "timeout": None,
         "limits": httpx.Limits(max_connections=n_parallel_uploads),
         "headers": headers,
+        "base_url": dataverse_url,
     }
 
     async with httpx.AsyncClient(**session_params) as session:
@@ -159,6 +161,10 @@ async def _upload_to_store(
     )
 
     if "urls" not in ticket:
+        # Update the progress bar description and append [Singlepart]
+        progress.update(
+            pbar, description=f"Uploading file '{file.file_name}' [Singlepart]"
+        )
         status, storage_identifier = await _upload_singlepart(
             session=session,
             ticket=ticket,
@@ -170,6 +176,10 @@ async def _upload_to_store(
         )
 
     else:
+        # Update the progress bar description and append [Multipart]
+        progress.update(
+            pbar, description=f"Uploading file '{file.file_name}' [Multipart]"
+        )
         status, storage_identifier = await _upload_multipart(
             session=session,
             response=ticket,
@@ -213,6 +223,9 @@ async def _request_ticket(
         params={
             "size": file_size,
             "persistentId": persistent_id,
+        },
+        headers={
+            "X-Dataverse-key": api_token,
         },
     )
     response.raise_for_status()
