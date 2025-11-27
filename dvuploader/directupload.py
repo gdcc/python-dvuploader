@@ -10,7 +10,7 @@ import httpx
 from rich.progress import Progress, TaskID
 
 from dvuploader.file import File
-from dvuploader.utils import build_url, init_logging, wait_for_dataset_unlock
+from dvuploader.utils import init_logging, wait_for_dataset_unlock
 
 TESTING = bool(os.environ.get("DVUPLOADER_TESTING", False))
 MAX_FILE_DISPLAY = int(os.environ.get("DVUPLOADER_MAX_FILE_DISPLAY", 50))
@@ -69,6 +69,7 @@ async def direct_upload(
         "timeout": None,
         "limits": httpx.Limits(max_connections=n_parallel_uploads),
         "proxy": proxy,
+        "base_url": dataverse_url,
     }
 
     async with httpx.AsyncClient(**session_params) as session:
@@ -106,6 +107,7 @@ async def direct_upload(
         "timeout": None,
         "limits": httpx.Limits(max_connections=n_parallel_uploads),
         "headers": headers,
+        "base_url": dataverse_url,
     }
 
     async with httpx.AsyncClient(**session_params) as session:
@@ -159,6 +161,10 @@ async def _upload_to_store(
     )
 
     if "urls" not in ticket:
+        # Update the progress bar description and append [Singlepart]
+        progress.update(
+            pbar, description=f"Uploading file '{file.file_name}' [Singlepart]"
+        )
         status, storage_identifier = await _upload_singlepart(
             session=session,
             ticket=ticket,
@@ -170,6 +176,10 @@ async def _upload_to_store(
         )
 
     else:
+        # Update the progress bar description and append [Multipart]
+        progress.update(
+            pbar, description=f"Uploading file '{file.file_name}' [Multipart]"
+        )
         status, storage_identifier = await _upload_multipart(
             session=session,
             response=ticket,
@@ -205,14 +215,17 @@ async def _request_ticket(
     Returns:
         Dict: Upload ticket containing URL and storage identifier.
     """
-    url = build_url(
-        endpoint=urljoin(dataverse_url, TICKET_ENDPOINT),
-        key=api_token,
-        persistentId=persistent_id,
-        size=file_size,
+    response = await session.get(
+        TICKET_ENDPOINT,
+        timeout=None,
+        params={
+            "size": file_size,
+            "persistentId": persistent_id,
+        },
+        headers={
+            "X-Dataverse-key": api_token,
+        },
     )
-
-    response = await session.get(url, timeout=None)
     response.raise_for_status()
 
     return response.json()["data"]
