@@ -215,10 +215,8 @@ async def _request_ticket(
     Returns:
         Dict: Upload ticket containing URL and storage identifier.
     """
-    url = urljoin(dataverse_url, TICKET_ENDPOINT)
-
     response = await session.get(
-        url,
+        TICKET_ENDPOINT,
         timeout=None,
         params={
             "size": file_size,
