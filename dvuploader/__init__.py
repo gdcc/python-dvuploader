@@ -1,10 +1,17 @@
-from .dvuploader import DVUploader  # noqa: F401
-from .file import File  # noqa: F401
-from .utils import add_directory  # noqa: F401
-from .config import config  # noqa: F401
-
 import nest_asyncio
+
+from .config import config
+from .dvuploader import DVUploader
+from .file import File
+from .utils import add_directory
 
 nest_asyncio.apply()
 
-__version__ = "0.3.0"
+__all__ = [
+    "config",
+    "DVUploader",
+    "File",
+    "add_directory",
+]
+
+__version__ = "0.3.1"
