@@ -396,6 +396,7 @@ def _get_json_data(file: File) -> Dict:
         "categories",
         "restrict",
         "tabIngest",
+        "directory_label"
     }
     return file.model_dump(by_alias=True, exclude_none=True, include=include)
 

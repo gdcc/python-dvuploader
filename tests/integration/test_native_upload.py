@@ -590,6 +590,73 @@ class TestNativeUpload:
                 dataverse_url=BASE_URL,
                 n_parallel_uploads=1,
             )
+        
+    def test_native_upload_single_file_with_path(
+        self,
+        credentials,
+    ):
+
+        BASE_URL,  API_TOKEN = credentials
+
+        filename  = "single_file.bin"
+        dv_path = "a/b/c"
+        categories =  ["testfile", "with metadata"]
+        description = "This is a testfile with metadata"
+
+        # Create Dataset
+        pid = create_dataset(
+            parent="Root",
+            server_url=BASE_URL,
+            api_token=API_TOKEN,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            os.makedirs(os.path.join(directory, dv_path))
+            local_path = os.path.join(directory, dv_path, filename)
+            self._create_file(1024*2, local_path)
+
+            files = [
+                File(
+                    filepath=local_path,
+                    directoryLabel=dv_path,
+                    categories=categories,
+                    description=description,
+                ),
+            ]
+
+            uploader = DVUploader(files=files)
+            uploader.upload(
+                persistent_id=pid,
+                api_token=API_TOKEN,
+                dataverse_url=BASE_URL,
+                n_parallel_uploads=1,
+            )
+
+        files = retrieve_dataset_files(
+            dataverse_url=BASE_URL,
+            persistent_id=pid,
+            api_token=API_TOKEN,
+        )
+
+        expected_files = [
+            {
+                "label": filename,
+                "directoryLabel": dv_path,
+                "description": description,
+                "categories": categories,
+            }
+        ]
+
+        files_as_expected = sorted(  # pyright: ignore[reportCallIssue]
+            [
+                {k: (f[k] if k in f else None) for k in expected_files[0].keys()}
+                for f in files
+            ],
+            key=lambda x: x["label"],  # pyright: ignore[reportArgumentType]
+        )
+        assert files_as_expected == expected_files, (
+            f"File metadata not as expected: {json.dumps(files, indent=2)}"
+        )        
 
     def _create_file(self, size: int, path: str):
         with open(path, "wb") as f:
